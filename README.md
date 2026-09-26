@@ -10,7 +10,7 @@ reports. The [AI SDK](https://ai-sdk.dev/) agent loop lives in
 ```text
 src/
   cli/       Command-line entry point and terminal error formatting
-  agent/     AI orchestration, provider configuration, and tool definitions
+  agent/     AI orchestration, provider configuration, and separated tool sets
   gitlab/    GitLab API client and review-comment normalization
   analysis/  Saved-analysis storage, validation, and category policy
   reports/   Offline HTML report generation

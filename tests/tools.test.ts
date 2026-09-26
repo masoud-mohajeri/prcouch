@@ -6,10 +6,16 @@ import { AnalysisStore } from "../src/analysis/store.js";
 import { CommentCategoryPolicy } from "../src/analysis/category-policy.js";
 import { GitLabClient } from "../src/gitlab/client.js";
 import { CommentReportGenerator } from "../src/reports/report.js";
-import { createGitLabTools, gitLabToolNames } from "../src/agent/tools.js";
+import {
+  analysisToolNames,
+  createAgentTools,
+  createAnalysisTools,
+  createGitLabTools,
+  gitLabToolNames,
+} from "../src/agent/tools/index.js";
 
-describe("GitLab agent tools", () => {
-  it("exposes the complete GitLab-analysis tool set", () => {
+describe("agent tools", () => {
+  it("separates GitLab retrieval tools from analysis tools", () => {
     const client = new GitLabClient(
       {
         baseUrl: "https://gitlab.example.test",
@@ -28,24 +34,37 @@ describe("GitLab agent tools", () => {
       join(tmpdir(), "prcouch-tool-reports"),
     );
 
+    expect(Object.keys(createGitLabTools(client))).toEqual(
+      Object.values(gitLabToolNames),
+    );
+    expect(gitLabToolNames).toEqual({
+      getProject: "get_project",
+      listRecentMergeRequests: "list_recent_merge_requests",
+      getMergeRequestDiscussions: "get_merge_request_discussions",
+      listComments: "list_comments",
+    });
     expect(
       Object.keys(
-        createGitLabTools(
+        createAnalysisTools(analysisStore, categoryPolicy, reportGenerator),
+      ),
+    ).toEqual(Object.values(analysisToolNames));
+    expect(analysisToolNames).toEqual({
+      getCommentCategories: "get_comment_categories",
+      saveAnalyzedComment: "save_analyzed_comment",
+      generateCommentReport: "generate_comment_report",
+    });
+    expect(
+      Object.keys(
+        createAgentTools(
           client,
           analysisStore,
           categoryPolicy,
           reportGenerator,
         ),
       ),
-    ).toEqual(Object.values(gitLabToolNames));
-    expect(gitLabToolNames).toEqual({
-      getProject: "get_project",
-      listRecentMergeRequests: "list_recent_merge_requests",
-      getMergeRequestDiscussions: "get_merge_request_discussions",
-      listComments: "list_comments",
-      getCommentCategories: "get_comment_categories",
-      saveAnalyzedComment: "save_analyzed_comment",
-      generateCommentReport: "generate_comment_report",
-    });
+    ).toEqual([
+      ...Object.values(gitLabToolNames),
+      ...Object.values(analysisToolNames),
+    ]);
   });
 });

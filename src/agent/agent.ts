@@ -1,7 +1,7 @@
 import { generateText, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 
-import { createGitLabTools } from "./tools.js";
+import { createAgentTools } from "./tools/index.js";
 import { GitLabClient } from "../gitlab/client.js";
 import { getOpenAIConfig } from "./openai-config.js";
 
@@ -88,7 +88,7 @@ export async function runGitLabAgent(
         : provider.responses(process.env.OPENAI_MODEL ?? "gpt-5-mini"),
     system: systemPrompt,
     prompt: input,
-    tools: createGitLabTools(gitLabClient),
+    tools: createAgentTools(gitLabClient),
     prepareStep: ({ stepNumber }) => {
       if (stepNumber === 0 && initialTool) {
         return { toolChoice: { type: "tool", toolName: initialTool } };
