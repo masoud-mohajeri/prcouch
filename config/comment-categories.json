@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "categories": [
+    {
+      "id": "bug",
+      "label": "Bug",
+      "description": "A functional defect or regression.",
+      "severity": "high",
+      "defaultResolution": "open",
+      "action": "Fix the defect, add a focused test, then resolve the discussion."
+    },
+    {
+      "id": "security",
+      "label": "Security",
+      "description": "A security or privacy vulnerability.",
+      "severity": "critical",
+      "defaultResolution": "open",
+      "action": "Prioritize remediation and request security review before resolving."
+    },
+    {
+      "id": "performance",
+      "label": "Performance",
+      "description": "An inefficient implementation or scalability risk.",
+      "severity": "medium",
+      "defaultResolution": "open",
+      "action": "Benchmark, optimize the bottleneck, and validate the impact."
+    },
+    {
+      "id": "correctness",
+      "label": "Correctness",
+      "description": "An edge case, logic error, or data-integrity issue.",
+      "severity": "high",
+      "defaultResolution": "open",
+      "action": "Correct the behavior and add coverage for the affected case."
+    },
+    {
+      "id": "maintainability",
+      "label": "Maintainability",
+      "description": "A readability, structure, duplication, or technical-debt concern.",
+      "severity": "low",
+      "defaultResolution": "needs_discussion",
+      "action": "Refactor when the agreed value justifies the change."
+    },
+    {
+      "id": "testing",
+      "label": "Testing",
+      "description": "Missing, weak, or incorrect automated coverage.",
+      "severity": "medium",
+      "defaultResolution": "open",
+      "action": "Add or repair focused automated tests."
+    },
+    {
+      "id": "documentation",
+      "label": "Documentation",
+      "description": "Missing or inaccurate documentation or code comments.",
+      "severity": "low",
+      "defaultResolution": "open",
+      "action": "Update the relevant documentation or explanatory comment."
+    },
+    {
+      "id": "style",
+      "label": "Style",
+      "description": "A formatting or low-risk convention issue.",
+      "severity": "info",
+      "defaultResolution": "open",
+      "action": "Apply the agreed project convention."
+    },
+    {
+      "id": "question",
+      "label": "Question",
+      "description": "A request for clarification or an unresolved design decision.",
+      "severity": "info",
+      "defaultResolution": "needs_discussion",
+      "action": "Answer the question or agree on a decision, then resolve it."
+    },
+    {
+      "id": "praise",
+      "label": "Praise",
+      "description": "Positive feedback without a requested code change.",
+      "severity": "info",
+      "defaultResolution": "not_actionable",
+      "action": "Acknowledge the feedback; normally no code change is needed."
+    },
+    {
+      "id": "other",
+      "label": "Other",
+      "description": "Feedback that does not fit a defined category.",
+      "severity": "info",
+      "defaultResolution": "needs_discussion",
+      "action": "Triage manually and agree on the appropriate next step."
+    }
+  ]
+}
