@@ -29,6 +29,10 @@ npm install
 npm start -- "List unresolved review comments in recent merge requests"
 ```
 
+When run directly in an interactive terminal, `npm start` also prompts for the
+request and shows structured progress, response, and error output. Supplying a
+quoted request keeps the command convenient for scripts and automation.
+
 The primary and raw SDK agent loops require all four settings below at startup:
 
 ```dotenv

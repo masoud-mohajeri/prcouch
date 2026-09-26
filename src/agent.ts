@@ -22,21 +22,35 @@ export type AgentResult = {
   toolResults: unknown[];
 };
 
-type InitialToolName = "add_task" | "list_tasks" | "list_recent_merge_requests";
+type InitialToolName =
+  | "add_task"
+  | "list_tasks"
+  | "get_project"
+  | "list_recent_merge_requests"
+  | "list_comments"
+  | "get_comment_categories"
+  | "generate_comment_report";
 
 /**
- * Some OpenAI-compatible Chat Completions proxies ignore `tool_choice: auto`.
- * Force only the unambiguous first lookup or action; later tool calls remain
- * model-driven because their arguments depend on prior tool results.
+ * Start unambiguous data requests with their relevant tool. This prevents a
+ * model from asking for values that the tool schemas already default, and also
+ * makes tool use reliable across both Responses and Chat Completions endpoints.
+ * Later tool calls remain model-driven because their arguments can depend on
+ * the first result.
  */
 export function getInitialToolForInput(input: string): InitialToolName | undefined {
   const query = input.toLowerCase();
+  const mentionsMergeRequest = /\b(?:merge requests?|mrs?|prs?)\b/.test(query);
+  const mentionsRecentMergeRequest = /\b(?:recent|latest|last)\b.*\b(?:merge requests?|mrs?|prs?)\b|\b(?:merge requests?|mrs?|prs?)\b.*\b(?:recent|latest|last)\b/.test(query);
+  const mentionsComments = /\b(?:review )?comments?\b/.test(query);
 
   if (/\b(add|create|remember)\b.*\b(task|todo)\b/.test(query)) return "add_task";
   if (/\b(what|list|show)\b.*\b(tasks?|todos?)\b/.test(query)) return "list_tasks";
-  if (/\b(review )?comments?\b.*\b(last|recent)\b.*\b(prs?|merge requests?)\b/.test(query)) {
-    return "list_recent_merge_requests";
-  }
+  if (/\b(?:generate|create|build|show)\b.*\breport\b|\breport\b.*\b(?:comments?|analys)/.test(query)) return "generate_comment_report";
+  if (/\b(?:comment )?categor(?:y|ies)\b/.test(query)) return "get_comment_categories";
+  if (/\b(?:configured )?(?:project|repository|repo)\b.*\b(?:name|metadata|details?|info)|\b(?:what|which)\b.*\b(?:project|repository|repo)\b/.test(query)) return "get_project";
+  if (mentionsMergeRequest && (mentionsRecentMergeRequest || !mentionsComments)) return "list_recent_merge_requests";
+  if (mentionsComments) return "list_comments";
 
   return undefined;
 }
@@ -52,7 +66,7 @@ export async function runTaskAgent(
 
   const { baseURL, apiMode } = getOpenAIConfig();
   const provider = createOpenAI(baseURL ? { baseURL } : undefined);
-  const initialTool = apiMode === "chat" ? getInitialToolForInput(input) : undefined;
+  const initialTool = getInitialToolForInput(input);
 
   const result = await generateText({
     // Many OpenAI-compatible endpoints implement Chat Completions but not the
@@ -73,9 +87,12 @@ export async function runTaskAgent(
     stopWhen: stepCountIs(105),
   });
 
+  const toolCalls = result.steps.flatMap((step) => step.toolCalls.map((call) => call.toolName));
+  const toolResults = result.steps.flatMap((step) => step.toolResults);
+
   return {
     text: result.text,
-    toolCalls: result.toolCalls.map((call) => call.toolName),
-    toolResults: result.toolResults,
+    toolCalls,
+    toolResults,
   };
 }
