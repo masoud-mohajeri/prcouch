@@ -9,6 +9,7 @@ import { CommentCategoryPolicy } from "./comment-category-policy.js";
 import { AnalyzedCommentService } from "./analyzed-comment-service.js";
 import { CommentReportGenerator } from "./report.js";
 import { gitLabToolNames, rawRequiredFields } from "./gitlab-tool-contracts.js";
+import { getOpenAIConfig } from "./openai-config.js";
 
 const input = process.argv.slice(2).join(" ");
 if (!input) {
@@ -20,7 +21,11 @@ if (!process.env.OPENAI_API_KEY?.trim()) {
   process.exit(1);
 }
 
-const baseURL = process.env.OPENAI_BASE_URL?.trim();
+const { baseURL, apiMode } = getOpenAIConfig();
+if (apiMode === "chat") {
+  console.error("OPENAI_API_MODE=chat is supported by npm start and npm run evals; npm run openai-sdk requires a Responses API-compatible endpoint.");
+  process.exit(1);
+}
 const client = new OpenAI(baseURL ? { baseURL } : undefined);
 const store = new TaskStore();
 const gitlab = new GitLabClient(requireGitLabConfig());
