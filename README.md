@@ -35,9 +35,13 @@ npm install
 npm start -- "List unresolved review comments in recent merge requests"
 ```
 
-When run directly in an interactive terminal, `npm start` also prompts for the
-request and shows structured progress, response, and error output. Supplying a
-quoted request keeps the command convenient for scripts and automation.
+When run directly in an interactive terminal, `npm start` opens a chat session:
+it prompts for further requests after every response and retains a bounded
+window of recent conversational context for follow-up questions. Verbose tool
+payloads are discarded after a turn, so the agent re-fetches GitLab data when a
+follow-up needs those details. History exists only in memory and is discarded
+when the process exits. Supplying a quoted request keeps the command convenient
+for scripts and automation; noninteractive commands remain one-shot.
 
 The agent requires all four settings below at startup:
 
