@@ -7,7 +7,7 @@ import {
   AnalysisStore,
   getAnalysisStorePath,
   type AnalyzedCommentInput,
-} from "../src/analysis-store.js";
+} from "../src/analysis/store.js";
 
 const directories: string[] = [];
 

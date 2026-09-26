@@ -6,12 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AnalysisStore,
   type AnalyzedCommentInput,
-} from "../src/analysis-store.js";
-import { AnalyzedCommentService } from "../src/analyzed-comment-service.js";
+} from "../src/analysis/store.js";
+import { AnalyzedCommentService } from "../src/analysis/service.js";
 import {
   CommentCategoryPolicy,
   getCommentCategoryConfigPath,
-} from "../src/comment-category-policy.js";
+} from "../src/analysis/category-policy.js";
 
 const directories: string[] = [];
 

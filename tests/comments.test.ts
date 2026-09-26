@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { CommentService } from "../src/comments.js";
-import { GitLabClient } from "../src/gitlab.js";
+import { CommentService } from "../src/gitlab/comments.js";
+import { GitLabClient } from "../src/gitlab/client.js";
 
 const config = {
   baseUrl: "https://gitlab.example.test",

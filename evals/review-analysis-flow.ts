@@ -1,9 +1,9 @@
-import { AnalysisStore } from "../src/analysis-store.js";
-import { AnalyzedCommentService } from "../src/analyzed-comment-service.js";
-import { CommentCategoryPolicy } from "../src/comment-category-policy.js";
-import { CommentService } from "../src/comments.js";
-import { GitLabClient } from "../src/gitlab.js";
-import { CommentReportGenerator } from "../src/report.js";
+import { AnalysisStore } from "../src/analysis/store.js";
+import { AnalyzedCommentService } from "../src/analysis/service.js";
+import { CommentCategoryPolicy } from "../src/analysis/category-policy.js";
+import { CommentService } from "../src/gitlab/comments.js";
+import { GitLabClient } from "../src/gitlab/client.js";
+import { CommentReportGenerator } from "../src/reports/report.js";
 
 /**
  * Deterministic, no-network fixture for the complete review-analysis flow.

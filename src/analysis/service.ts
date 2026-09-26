@@ -2,8 +2,8 @@ import {
   AnalysisStore,
   type AnalyzedCommentInput,
   type AnalyzedCommentRecord,
-} from "./analysis-store.js";
-import { CommentCategoryPolicy } from "./comment-category-policy.js";
+} from "./store.js";
+import { CommentCategoryPolicy } from "./category-policy.js";
 
 /** Ensures a persisted analysis uses a category supplied by the shared policy. */
 export class AnalyzedCommentService {

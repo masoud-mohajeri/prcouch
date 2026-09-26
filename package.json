@@ -4,10 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "tsx watch src/cli.ts",
-    "start": "tsx src/cli.ts",
-    "openai-sdk": "tsx src/openai-sdk-agent.ts",
-    "report": "tsx src/report-cli.ts",
+    "dev": "tsx watch src/cli/index.ts",
+    "start": "tsx src/cli/index.ts",
     "evals": "tsx evals/run.ts",
     "evals:laminar": "tsx evals/laminar.ts",
     "laminar:bootstrap": "bash scripts/laminar.sh bootstrap",
@@ -30,7 +28,6 @@
     "@lmnr-ai/lmnr": "^0.8.48",
     "ai": "^5.0.0",
     "dotenv": "^16.0.0",
-    "openai": "^5.0.0",
     "zod": "^3.0.0"
   },
   "devDependencies": {

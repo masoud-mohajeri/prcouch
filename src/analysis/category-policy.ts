@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { z } from "zod";
 
-import { resolutionSchema } from "./analysis-store.js";
+import { resolutionSchema } from "./store.js";
 
 const categorySchema = z.object({
   id: z

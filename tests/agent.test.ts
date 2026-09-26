@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getInitialToolForInput } from "../src/agent.js";
+import { getInitialToolForInput } from "../src/agent/agent.js";
 
 describe("getInitialToolForInput", () => {
   it.each([

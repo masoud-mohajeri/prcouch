@@ -1,5 +1,5 @@
-import { runGitLabAgent, type AgentResult } from "../src/agent.js";
-import { GitLabClient } from "../src/gitlab.js";
+import { runGitLabAgent, type AgentResult } from "../src/agent/agent.js";
+import { GitLabClient } from "../src/gitlab/client.js";
 import type { EvalInput } from "./cases.js";
 
 export type EvalOutput = Pick<AgentResult, "text" | "toolCalls"> & {

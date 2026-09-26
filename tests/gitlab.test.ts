@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { GitLabClient, requireGitLabConfig } from "../src/gitlab.js";
+import { GitLabClient, requireGitLabConfig } from "../src/gitlab/client.js";
 
 const config = {
   baseUrl: "https://gitlab.example.test",

@@ -6,9 +6,12 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   AnalysisStore,
   type AnalyzedCommentInput,
-} from "../src/analysis-store.js";
-import { CommentCategoryPolicy } from "../src/comment-category-policy.js";
-import { CommentReportGenerator, getReportDirectory } from "../src/report.js";
+} from "../src/analysis/store.js";
+import { CommentCategoryPolicy } from "../src/analysis/category-policy.js";
+import {
+  CommentReportGenerator,
+  getReportDirectory,
+} from "../src/reports/report.js";
 
 const directories: string[] = [];
 

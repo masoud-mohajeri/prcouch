@@ -2,10 +2,19 @@
 
 A Node.js and TypeScript agent for exploring GitLab merge-request feedback,
 categorizing review comments, saving local analyses, and producing offline HTML
-reports. It includes two tool-calling implementations:
+reports. The [AI SDK](https://ai-sdk.dev/) agent loop lives in
+[`src/agent/agent.ts`](src/agent/agent.ts).
 
-- an [AI SDK](https://ai-sdk.dev/) agent loop (`src/agent.ts`)
-- a raw [OpenAI Responses API](https://developers.openai.com/api/docs/guides/function-calling) example (`src/openai-sdk-agent.ts`)
+## Project layout
+
+```text
+src/
+  cli/       Command-line entry point and terminal error formatting
+  agent/     AI orchestration, provider configuration, and tool definitions
+  gitlab/    GitLab API client and review-comment normalization
+  analysis/  Saved-analysis storage, validation, and category policy
+  reports/   Offline HTML report generation
+```
 
 ## Requirements
 
@@ -30,7 +39,7 @@ When run directly in an interactive terminal, `npm start` also prompts for the
 request and shows structured progress, response, and error output. Supplying a
 quoted request keeps the command convenient for scripts and automation.
 
-The primary and raw SDK agent loops require all four settings below at startup:
+The agent requires all four settings below at startup:
 
 ```dotenv
 OPENAI_API_KEY=...
@@ -82,19 +91,9 @@ npm start -- "Categorize the review comments and save each analysis with a ratio
 npm start -- "Generate an HTML report for saved security comments."
 ```
 
-Run the same workflow through the raw OpenAI SDK implementation:
-
-```bash
-npm run openai-sdk -- "List unresolved review comments in recent merge requests"
-```
-
 ## Reports
 
-Generate a self-contained HTML dashboard from the saved analyses:
-
-```bash
-npm run report
-```
+Ask the agent to generate a self-contained HTML dashboard from saved analyses.
 
 By default, reports are timestamped files in `reports/`. Set
 `REPORT_OUTPUT_DIR` to change the directory. A report includes summary metrics,

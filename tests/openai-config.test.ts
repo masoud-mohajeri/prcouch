@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { getOpenAIConfig } from "../src/openai-config.js";
+import { getOpenAIConfig } from "../src/agent/openai-config.js";
 
 describe("getOpenAIConfig", () => {
   it("uses Chat Completions for a configured base URL and trims it", () => {

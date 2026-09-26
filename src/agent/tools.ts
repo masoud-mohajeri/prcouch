@@ -1,13 +1,28 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-import { GitLabClient, requireGitLabConfig } from "./gitlab.js";
-import { CommentService } from "./comments.js";
-import { AnalysisStore, analyzedCommentInputSchema } from "./analysis-store.js";
-import { CommentCategoryPolicy } from "./comment-category-policy.js";
-import { AnalyzedCommentService } from "./analyzed-comment-service.js";
-import { CommentReportGenerator, reportFiltersSchema } from "./report.js";
-import { gitLabToolNames } from "./gitlab-tool-contracts.js";
+import { GitLabClient, requireGitLabConfig } from "../gitlab/client.js";
+import { CommentService } from "../gitlab/comments.js";
+import {
+  AnalysisStore,
+  analyzedCommentInputSchema,
+} from "../analysis/store.js";
+import { CommentCategoryPolicy } from "../analysis/category-policy.js";
+import { AnalyzedCommentService } from "../analysis/service.js";
+import {
+  CommentReportGenerator,
+  reportFiltersSchema,
+} from "../reports/report.js";
+
+export const gitLabToolNames = {
+  getProject: "get_project",
+  listRecentMergeRequests: "list_recent_merge_requests",
+  getMergeRequestDiscussions: "get_merge_request_discussions",
+  listComments: "list_comments",
+  getCommentCategories: "get_comment_categories",
+  saveAnalyzedComment: "save_analyzed_comment",
+  generateCommentReport: "generate_comment_report",
+} as const;
 
 /**
  * Read-only GitLab tools. Credentials and the project are process configuration,

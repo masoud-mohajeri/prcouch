@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { formatCliError } from "../src/cli-error.js";
+import { formatCliError } from "../src/cli/error.js";
 
 describe("formatCliError", () => {
   it("reports nested provider server errors with their request ID", () => {

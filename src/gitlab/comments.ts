@@ -3,7 +3,7 @@ import type {
   GitLabClient,
   MergeRequest,
   Project,
-} from "./gitlab.js";
+} from "./client.js";
 
 const MAX_MERGE_REQUESTS = 100;
 const DISCUSSION_CONCURRENCY = 5;

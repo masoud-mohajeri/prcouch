@@ -2,19 +2,14 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { describe, expect, it } from "vitest";
 
-import { AnalysisStore } from "../src/analysis-store.js";
-import { CommentCategoryPolicy } from "../src/comment-category-policy.js";
-import { GitLabClient } from "../src/gitlab.js";
-import {
-  gitLabToolNameList,
-  gitLabToolNames,
-  rawRequiredFields,
-} from "../src/gitlab-tool-contracts.js";
-import { CommentReportGenerator } from "../src/report.js";
-import { createGitLabTools } from "../src/tools.js";
+import { AnalysisStore } from "../src/analysis/store.js";
+import { CommentCategoryPolicy } from "../src/analysis/category-policy.js";
+import { GitLabClient } from "../src/gitlab/client.js";
+import { CommentReportGenerator } from "../src/reports/report.js";
+import { createGitLabTools, gitLabToolNames } from "../src/agent/tools.js";
 
-describe("GitLab tool contracts", () => {
-  it("keeps the AI SDK and raw SDK GitLab-analysis tool names in one shared contract", () => {
+describe("GitLab agent tools", () => {
+  it("exposes the complete GitLab-analysis tool set", () => {
     const client = new GitLabClient(
       {
         baseUrl: "https://gitlab.example.test",
@@ -42,7 +37,7 @@ describe("GitLab tool contracts", () => {
           reportGenerator,
         ),
       ),
-    ).toEqual(gitLabToolNameList);
+    ).toEqual(Object.values(gitLabToolNames));
     expect(gitLabToolNames).toEqual({
       getProject: "get_project",
       listRecentMergeRequests: "list_recent_merge_requests",
@@ -51,21 +46,6 @@ describe("GitLab tool contracts", () => {
       getCommentCategories: "get_comment_categories",
       saveAnalyzedComment: "save_analyzed_comment",
       generateCommentReport: "generate_comment_report",
-    });
-  });
-
-  it("keeps raw Responses required fields explicit for the shared tool contracts", () => {
-    expect(rawRequiredFields).toEqual({
-      listRecentMergeRequests: ["limit", "state"],
-      getMergeRequestDiscussions: ["mergeRequestIid"],
-      listComments: ["state", "includeResolved", "limit"],
-      saveAnalyzedComment: [
-        "project",
-        "mergeRequest",
-        "comment",
-        "category",
-        "resolution",
-      ],
     });
   });
 });

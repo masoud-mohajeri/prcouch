@@ -2,7 +2,7 @@ import { generateText, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 
 import { createGitLabTools } from "./tools.js";
-import { GitLabClient } from "./gitlab.js";
+import { GitLabClient } from "../gitlab/client.js";
 import { getOpenAIConfig } from "./openai-config.js";
 
 export const systemPrompt = `You are a concise GitLab review analysis assistant.

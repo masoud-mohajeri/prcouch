@@ -10,8 +10,8 @@ import {
   text,
 } from "@clack/prompts";
 
-import { runGitLabAgent } from "./agent.js";
-import { formatCliError } from "./cli-error.js";
+import { runGitLabAgent } from "../agent/agent.js";
+import { formatCliError } from "./error.js";
 
 const terminalUi = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
