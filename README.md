@@ -52,7 +52,9 @@ tool-call protocol. Set it explicitly to override that behavior.
 ## What the agent can do
 
 GitLab access is read-only. The agent can retrieve canonical project metadata,
-recent merge requests, their discussions, and normalized review comments. It
+recent merge requests, their discussions, and normalized review comments. Each
+returned comment includes the complete discussion history (all notes and
+replies, including system events) in chronological order. It
 can filter comments by author, merge request, state, creation date, and resolved
 status. Inline comments include file and line context and, where GitLab returns
 one, the diff commit SHA.

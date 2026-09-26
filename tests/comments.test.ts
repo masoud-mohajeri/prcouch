@@ -114,6 +114,12 @@ describe("CommentService", () => {
       location: { oldPath: "src/input.ts", newPath: "src/input.ts", oldLine: 4, newLine: 7 },
       commitSha: "head-sha",
     });
+    expect(page.items[1].discussionHistory.map((note) => note.noteId)).toEqual([1, 3, 2]);
+    expect(page.items[1].discussionHistory).toContainEqual(expect.objectContaining({
+      noteId: 1,
+      body: "System event",
+      system: true,
+    }));
     expect(page.items[0].location).toEqual({
       oldPath: "src/legacy.ts", newPath: null, oldLine: 18, newLine: null,
     });

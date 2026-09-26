@@ -39,6 +39,27 @@ export type NormalizedComment = {
   };
   /** GitLab diff SHA, not a human-readable commit message. */
   commitSha: string | null;
+  /** Every note in this discussion, ordered from oldest to newest. */
+  discussionHistory: DiscussionHistoryNote[];
+};
+
+export type DiscussionHistoryNote = {
+  noteId: number;
+  body: string;
+  author: { name: string; username: string };
+  createdAt: string;
+  updatedAt: string;
+  sourceUrl: string;
+  system: boolean;
+  resolvable: boolean;
+  resolved: boolean;
+  location: {
+    oldPath: string | null;
+    newPath: string | null;
+    oldLine: number | null;
+    newLine: number | null;
+  };
+  commitSha: string | null;
 };
 
 export type CommentPage = {
@@ -84,11 +105,14 @@ export class CommentService {
     }
 
     const comments = discussions
-      .flatMap(({ mergeRequest, discussions: mergeRequestDiscussions }) => mergeRequestDiscussions.flatMap((discussion) =>
-        discussion.notes
+      .flatMap(({ mergeRequest, discussions: mergeRequestDiscussions }) => mergeRequestDiscussions.flatMap((discussion) => {
+        const discussionHistory = discussion.notes
+          .map((note) => normalizeDiscussionHistoryNote(mergeRequest, note))
+          .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.noteId - right.noteId);
+        return discussion.notes
           .filter((note) => !note.system)
-          .map((note) => normalizeComment(mergeRequest, discussion.id, note)),
-      ))
+          .map((note) => normalizeComment(mergeRequest, discussion.id, note, discussionHistory));
+      }))
       .filter((comment) => matchesQuery(comment, query, createdAfter, createdBefore))
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.noteId - left.noteId);
     const items = comments.slice(offset, offset + query.limit);
@@ -112,28 +136,51 @@ function normalizeComment(
     author: { name: string; username: string };
     created_at: string;
     updated_at: string;
+    system: boolean;
     resolvable: boolean;
     resolved: boolean;
     position?: DiffPosition;
   },
+  discussionHistory: DiscussionHistoryNote[],
 ): NormalizedComment {
-  const position = note.position;
   return {
     discussionId,
-    noteId: note.id,
-    body: note.body,
-    author: note.author,
-    createdAt: note.created_at,
-    updatedAt: note.updated_at,
-    sourceUrl: `${mergeRequest.web_url}#note_${note.id}`,
-    resolvable: note.resolvable,
-    resolved: note.resolved,
+    ...normalizeDiscussionHistoryNote(mergeRequest, note),
     mergeRequest: {
       iid: mergeRequest.iid,
       title: mergeRequest.title,
       state: mergeRequest.state,
       webUrl: mergeRequest.web_url,
     },
+    discussionHistory,
+  };
+}
+
+function normalizeDiscussionHistoryNote(
+  mergeRequest: MergeRequest,
+  note: {
+    id: number;
+    body: string;
+    author: { name: string; username: string };
+    created_at: string;
+    updated_at: string;
+    system: boolean;
+    resolvable: boolean;
+    resolved: boolean;
+    position?: DiffPosition;
+  },
+): DiscussionHistoryNote {
+  const position = note.position;
+  return {
+    noteId: note.id,
+    body: note.body,
+    author: note.author,
+    createdAt: note.created_at,
+    updatedAt: note.updated_at,
+    sourceUrl: `${mergeRequest.web_url}#note_${note.id}`,
+    system: note.system,
+    resolvable: note.resolvable,
+    resolved: note.resolved,
     location: {
       oldPath: position?.old_path ?? null,
       newPath: position?.new_path ?? null,

@@ -37,7 +37,7 @@ export function createGitLabTools(
       execute: async ({ limit, state }) => ({ mergeRequests: await client.listRecentMergeRequests(limit, state) }),
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({
-      description: "Get every GitLab discussion and review comment, including inline/diff comments, for one merge request. Pass the merge request IID returned by list_recent_merge_requests, not its database ID.",
+      description: "Get every GitLab discussion and every note in its reply history, including inline/diff comments, for one merge request. Pass the merge request IID returned by list_recent_merge_requests, not its database ID.",
       inputSchema: z.object({
         mergeRequestIid: z.number().int().positive().describe("Project-local merge request IID"),
       }),
@@ -46,7 +46,7 @@ export function createGitLabTools(
       }),
     }),
     [gitLabToolNames.listComments]: tool({
-      description: "List normalized human GitLab review comments. Filter authorName case-insensitively by substring against the author's name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
+      description: "List normalized human GitLab review comments. Each item includes discussionHistory with every note and reply in that discussion, ordered oldest to newest, including system events. Filter authorName case-insensitively by substring against the item's author name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
       inputSchema: z.object({
         authorName: z.string().trim().min(1).optional().describe("Optional case-insensitive substring of the author's name or username"),
         mergeRequestIid: z.number().int().positive().optional().describe("Optional project-local merge request IID"),

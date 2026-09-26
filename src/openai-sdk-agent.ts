@@ -129,7 +129,7 @@ const tools: OpenAI.Responses.FunctionTool[] = [
   {
     type: "function",
     name: gitLabToolNames.listComments,
-    description: "List normalized human GitLab review comments. authorName is a case-insensitive substring of the author's name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
+    description: "List normalized human GitLab review comments. Each item includes discussionHistory with every note and reply in that discussion, ordered oldest to newest, including system events. authorName is a case-insensitive substring of the item's author name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
     parameters: {
       type: "object",
       properties: {
@@ -172,7 +172,7 @@ const tools: OpenAI.Responses.FunctionTool[] = [
   {
     type: "function",
     name: gitLabToolNames.getMergeRequestDiscussions,
-    description: "Get every GitLab discussion and review comment, including inline/diff comments, for one merge request. Pass the merge request IID, not its database ID.",
+    description: "Get every GitLab discussion and every note in its reply history, including inline/diff comments, for one merge request. Pass the merge request IID, not its database ID.",
     parameters: {
       type: "object",
       properties: { mergeRequestIid: { type: "integer", minimum: 1 } },
