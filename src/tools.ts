@@ -1,7 +1,6 @@
 import { tool } from "ai";
 import { z } from "zod";
 
-import { TaskStore } from "./task-store.js";
 import { GitLabClient, requireGitLabConfig } from "./gitlab.js";
 import { CommentService } from "./comments.js";
 import { AnalysisStore, analyzedCommentInputSchema } from "./analysis-store.js";
@@ -9,38 +8,6 @@ import { CommentCategoryPolicy } from "./comment-category-policy.js";
 import { AnalyzedCommentService } from "./analyzed-comment-service.js";
 import { CommentReportGenerator, reportFiltersSchema } from "./report.js";
 import { gitLabToolNames } from "./gitlab-tool-contracts.js";
-
-/**
- * Keep tools narrow, schema-validated, and authorization-aware. Replace this
- * in-memory store with your database and enforce user/tenant checks here.
- */
-export function createTaskTools(store: TaskStore) {
-  return {
-    add_task: tool({
-      description: "Create a task for the user. Use only when they ask to add, remember, or create a task.",
-      inputSchema: z.object({
-        title: z.string().min(1).describe("A concise task title"),
-        dueDate: z.string().optional().describe("Optional due date, preserving the user's wording"),
-      }),
-      execute: async ({ title, dueDate }) => ({ task: store.add(title, dueDate) }),
-    }),
-    list_tasks: tool({
-      description: "List the user's tasks. Use when asked what tasks exist or remain.",
-      inputSchema: z.object({
-        includeCompleted: z.boolean().default(false).describe("Whether completed tasks should be included"),
-      }),
-      execute: async ({ includeCompleted }) => ({ tasks: store.list(includeCompleted) }),
-    }),
-    complete_task: tool({
-      description: "Mark a task complete by its ID. Ask for the ID if the task cannot be identified safely.",
-      inputSchema: z.object({ id: z.string().min(1).describe("The task ID") }),
-      execute: async ({ id }) => {
-        const task = store.complete(id);
-        return task ? { task } : { error: `No task found with ID ${id}` };
-      },
-    }),
-  };
-}
 
 /**
  * Read-only GitLab tools. Credentials and the project are process configuration,

@@ -2,7 +2,6 @@ import "dotenv/config";
 import OpenAI from "openai";
 
 import { GitLabClient, requireGitLabConfig } from "./gitlab.js";
-import { TaskStore } from "./task-store.js";
 import { CommentService } from "./comments.js";
 import { AnalysisStore } from "./analysis-store.js";
 import { CommentCategoryPolicy } from "./comment-category-policy.js";
@@ -13,7 +12,7 @@ import { getOpenAIConfig } from "./openai-config.js";
 
 const input = process.argv.slice(2).join(" ");
 if (!input) {
-  console.error('Usage: npm run openai-sdk -- "Add buy milk tomorrow"');
+  console.error('Usage: npm run openai-sdk -- "List unresolved review comments"');
   process.exit(1);
 }
 if (!process.env.OPENAI_API_KEY?.trim()) {
@@ -27,7 +26,6 @@ if (apiMode === "chat") {
   process.exit(1);
 }
 const client = new OpenAI(baseURL ? { baseURL } : undefined);
-const store = new TaskStore();
 const gitlab = new GitLabClient(requireGitLabConfig());
 const comments = new CommentService(gitlab);
 const analysisStore = new AnalysisStore();
@@ -158,25 +156,6 @@ const tools: OpenAI.Responses.FunctionTool[] = [
   },
   {
     type: "function",
-    name: "add_task",
-    description: "Create a task for the user.",
-    parameters: {
-      type: "object",
-      properties: { title: { type: "string" }, dueDate: { type: "string" } },
-      required: ["title"],
-      additionalProperties: false,
-    },
-    strict: true,
-  },
-  {
-    type: "function",
-    name: "list_tasks",
-    description: "List the user's tasks.",
-    parameters: { type: "object", properties: {}, additionalProperties: false },
-    strict: true,
-  },
-  {
-    type: "function",
     name: gitLabToolNames.listRecentMergeRequests,
     description: "List the most recently updated GitLab merge requests in the configured project. Use this before retrieving their comments.",
     parameters: {
@@ -206,7 +185,7 @@ const tools: OpenAI.Responses.FunctionTool[] = [
 
 let response = await client.responses.create({
   model: process.env.OPENAI_MODEL ?? "gpt-5-mini",
-  instructions: "You are a concise personal task and GitLab assistant. Use tools for task and GitLab data. For a request for the configured GitLab project's name or metadata, call get_project; do not infer a display name from configuration. Use list_comments for filtered review-comment requests; it returns author, merge request, inline location, and commit SHA context. Before save_analyzed_comment, call get_comment_categories and select one approved category, a permitted resolution, and a short evidence-based rationale. Use generate_comment_report when asked for an HTML report of saved analyses; it returns the local generated file path. For comments on recent merge requests, first list the requested number of merge requests, then retrieve discussions for each result. Never claim data was retrieved unless the tool confirms it.",
+  instructions: "You are a concise GitLab review analysis assistant. Use tools for GitLab data. For a request for the configured GitLab project's name or metadata, call get_project; do not infer a display name from configuration. Use list_comments for filtered review-comment requests; it returns author, merge request, inline location, and commit SHA context. Before save_analyzed_comment, call get_comment_categories and select one approved category, a permitted resolution, and a short evidence-based rationale. Use generate_comment_report when asked for an HTML report of saved analyses; it returns the local generated file path. For comments on recent merge requests, first list the requested number of merge requests, then retrieve discussions for each result. Never claim data was retrieved unless the tool confirms it.",
   input,
   tools,
 });
@@ -216,8 +195,6 @@ while (response.output.some((item) => item.type === "function_call")) {
     .filter((item): item is OpenAI.Responses.ResponseFunctionToolCall => item.type === "function_call")
     .map(async (call) => {
       const args = JSON.parse(call.arguments) as {
-        title?: string;
-        dueDate?: string;
         limit?: number;
         state?: "all" | "opened" | "closed" | "merged";
         mergeRequestIid?: number;
@@ -248,12 +225,6 @@ while (response.output.some((item) => item.type === "function_call")) {
       };
       let output: unknown;
       switch (call.name) {
-        case "add_task":
-          output = { task: store.add(args.title!, args.dueDate) };
-          break;
-        case "list_tasks":
-          output = { tasks: store.list() };
-          break;
         case "get_project":
           output = { project: await gitlab.getProject() };
           break;

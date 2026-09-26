@@ -1,6 +1,5 @@
-import { runTaskAgent, type AgentResult } from "../src/agent.js";
+import { runGitLabAgent, type AgentResult } from "../src/agent.js";
 import { GitLabClient } from "../src/gitlab.js";
-import { TaskStore } from "../src/task-store.js";
 import type { EvalInput } from "./cases.js";
 
 export type EvalOutput = Pick<AgentResult, "text" | "toolCalls"> & {
@@ -12,11 +11,8 @@ export type EvalOutput = Pick<AgentResult, "text" | "toolCalls"> & {
  * output. Laminar can pass this function directly to `evaluate` in the future.
  */
 export async function executeEvalCase(input: EvalInput): Promise<EvalOutput> {
-  const store = new TaskStore();
-  for (const task of input.seedTasks ?? []) store.add(task);
-
   const { client, requests } = createGitLabFixture(input.gitLabFixture);
-  const result = await runTaskAgent(input.query, store, client);
+  const result = await runGitLabAgent(input.query, client);
   return { text: result.text, toolCalls: result.toolCalls, gitLabRequests: requests };
 }
 

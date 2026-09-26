@@ -2,9 +2,8 @@ import "dotenv/config";
 
 import { cancel, intro, isCancel, log, outro, spinner, text } from "@clack/prompts";
 
-import { runTaskAgent } from "./agent.js";
+import { runGitLabAgent } from "./agent.js";
 import { formatCliError } from "./cli-error.js";
-import { TaskStore } from "./task-store.js";
 
 const terminalUi = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
@@ -19,7 +18,7 @@ const input = await getInput();
 const activity = terminalUi ? spinner() : undefined;
 try {
   activity?.start("Working on your request");
-  const result = await runTaskAgent(input, new TaskStore());
+  const result = await runGitLabAgent(input);
   activity?.stop("Request complete");
 
   if (terminalUi) {

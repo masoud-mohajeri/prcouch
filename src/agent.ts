@@ -1,13 +1,12 @@
 import { generateText, stepCountIs } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 
-import { TaskStore } from "./task-store.js";
-import { createGitLabTools, createTaskTools } from "./tools.js";
+import { createGitLabTools } from "./tools.js";
 import { GitLabClient } from "./gitlab.js";
 import { getOpenAIConfig } from "./openai-config.js";
 
-export const systemPrompt = `You are a concise personal task and GitLab assistant.
-Use tools to read or change task data and to retrieve GitLab merge-request data; never claim a task changed or GitLab data was retrieved unless the tool result confirms it.
+export const systemPrompt = `You are a concise GitLab review analysis assistant.
+Use tools to retrieve GitLab merge-request data; never claim GitLab data was retrieved unless the tool result confirms it.
 For a request for comments on recent merge requests, first list the requested number of merge requests, then retrieve discussions for each result. GitLab calls pull requests "merge requests."
 For a request for the configured GitLab project's name or metadata, call get_project; do not infer a display name from configuration.
 Use list_comments for filtered review-comment requests; it returns author, merge request, inline location, and commit SHA context.
@@ -23,8 +22,6 @@ export type AgentResult = {
 };
 
 type InitialToolName =
-  | "add_task"
-  | "list_tasks"
   | "get_project"
   | "list_recent_merge_requests"
   | "list_comments"
@@ -44,8 +41,6 @@ export function getInitialToolForInput(input: string): InitialToolName | undefin
   const mentionsRecentMergeRequest = /\b(?:recent|latest|last)\b.*\b(?:merge requests?|mrs?|prs?)\b|\b(?:merge requests?|mrs?|prs?)\b.*\b(?:recent|latest|last)\b/.test(query);
   const mentionsComments = /\b(?:review )?comments?\b/.test(query);
 
-  if (/\b(add|create|remember)\b.*\b(task|todo)\b/.test(query)) return "add_task";
-  if (/\b(what|list|show)\b.*\b(tasks?|todos?)\b/.test(query)) return "list_tasks";
   if (/\b(?:generate|create|build|show)\b.*\breport\b|\breport\b.*\b(?:comments?|analys)/.test(query)) return "generate_comment_report";
   if (/\b(?:comment )?categor(?:y|ies)\b/.test(query)) return "get_comment_categories";
   if (/\b(?:configured )?(?:project|repository|repo)\b.*\b(?:name|metadata|details?|info)|\b(?:what|which)\b.*\b(?:project|repository|repo)\b/.test(query)) return "get_project";
@@ -55,9 +50,8 @@ export function getInitialToolForInput(input: string): InitialToolName | undefin
   return undefined;
 }
 
-export async function runTaskAgent(
+export async function runGitLabAgent(
   input: string,
-  store = new TaskStore(),
   gitLabClient?: GitLabClient,
 ): Promise<AgentResult> {
   if (!process.env.OPENAI_API_KEY?.trim()) {
@@ -76,7 +70,7 @@ export async function runTaskAgent(
       : provider.responses(process.env.OPENAI_MODEL ?? "gpt-5-mini"),
     system: systemPrompt,
     prompt: input,
-    tools: { ...createTaskTools(store), ...createGitLabTools(gitLabClient) },
+    tools: createGitLabTools(gitLabClient),
     prepareStep: ({ stepNumber }) => {
       if (stepNumber === 0 && initialTool) {
         return { toolChoice: { type: "tool", toolName: initialTool } };

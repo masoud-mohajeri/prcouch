@@ -7,9 +7,6 @@ reports. It includes two tool-calling implementations:
 - an [AI SDK](https://ai-sdk.dev/) agent loop (`src/agent.ts`)
 - a raw [OpenAI Responses API](https://developers.openai.com/api/docs/guides/function-calling) example (`src/openai-sdk-agent.ts`)
 
-The project also retains a small in-memory task example to demonstrate
-side-effecting, schema-validated tools.
-
 ## Requirements
 
 - Node.js 22.12 or later
@@ -159,7 +156,6 @@ npm run laminar:update
 
 ## Production notes
 
-The task store is intentionally process-local. Before deploying, replace it
-with durable storage and enforce authenticated user and tenant authorization in
-every tool. Keep write operations narrow, validate all arguments, require
-confirmation for irreversible actions, and redact sensitive data from logs.
+Enforce authenticated user and tenant authorization in every tool. Keep write
+operations narrow, validate all arguments, require confirmation for
+irreversible actions, and redact sensitive data from logs.

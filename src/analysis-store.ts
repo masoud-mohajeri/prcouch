@@ -150,14 +150,14 @@ export class AnalysisStore {
     }
   }
 
-  private async withWriteLock<T>(task: () => Promise<T>): Promise<T> {
+  private async withWriteLock<T>(operation: () => Promise<T>): Promise<T> {
     const previous = writeLocks.get(this.path) ?? Promise.resolve();
-    const operation = previous.catch(() => undefined).then(task);
-    writeLocks.set(this.path, operation);
+    const pendingOperation = previous.catch(() => undefined).then(operation);
+    writeLocks.set(this.path, pendingOperation);
     try {
-      return await operation;
+      return await pendingOperation;
     } finally {
-      if (writeLocks.get(this.path) === operation) writeLocks.delete(this.path);
+      if (writeLocks.get(this.path) === pendingOperation) writeLocks.delete(this.path);
     }
   }
 }

@@ -4,7 +4,6 @@
  */
 export type EvalInput = {
   query: string;
-  seedTasks?: string[];
   gitLabFixture?: "recent-merge-request-comments";
 };
 
@@ -21,16 +20,6 @@ export type EvalCase = {
 };
 
 export const cases: EvalCase[] = [
-  {
-    data: { query: "Add a task to buy milk tomorrow." },
-    target: { toolSequence: ["add_task"], answerIncludes: ["buy milk"] },
-    metadata: { name: "create-task" },
-  },
-  {
-    data: { query: "What tasks do I still have?", seedTasks: ["write project brief"] },
-    target: { toolSequence: ["list_tasks"], answerIncludes: ["write project brief"] },
-    metadata: { name: "list-seeded-tasks" },
-  },
   {
     data: {
       query: "Show me the review comments on the last 2 PRs.",
