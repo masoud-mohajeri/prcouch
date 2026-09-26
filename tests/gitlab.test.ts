@@ -21,6 +21,41 @@ describe("GitLabClient", () => {
     );
   });
 
+  it("gets canonical project metadata using an encoded namespace path", async () => {
+    const project = {
+      id: 42,
+      name: "Billing Service",
+      path_with_namespace: "team/billing-service",
+      web_url: "https://gitlab.example.test/team/billing-service",
+    };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify(project), { status: 200 }));
+    const client = new GitLabClient({ ...config, project: "team/billing-service" }, fetchMock);
+
+    await expect(client.getProject()).resolves.toEqual(project);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.test/api/v4/projects/team%2Fbilling-service",
+      expect.objectContaining({ headers: expect.objectContaining({ "PRIVATE-TOKEN": "secret" }) }),
+    );
+  });
+
+  it("gets canonical project metadata using a numeric project ID", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ id: 42, name: "Billing" }), { status: 200 }));
+    const client = new GitLabClient({ ...config, project: "42" }, fetchMock);
+
+    await client.getProject();
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.test/api/v4/projects/42",
+      expect.anything(),
+    );
+  });
+
+  it("surfaces failed project metadata requests", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response("Forbidden", { status: 403, statusText: "Forbidden" }));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(client.getProject()).rejects.toThrow("GitLab request failed (403 Forbidden)");
+  });
+
   it("follows GitLab pagination when retrieving discussions", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify([{ id: "first" }]), { status: 200, headers: { "x-next-page": "2" } }))

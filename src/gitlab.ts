@@ -17,6 +17,14 @@ export type MergeRequest = {
   author: { name: string; username: string } | null;
 };
 
+/** Canonical metadata returned by GitLab for the configured project. */
+export type Project = {
+  id: number;
+  name: string;
+  path_with_namespace: string;
+  web_url: string;
+};
+
 export type Discussion = {
   id: string;
   individual_note: boolean;
@@ -29,8 +37,19 @@ export type Discussion = {
     system: boolean;
     resolvable: boolean;
     resolved: boolean;
-    position?: unknown;
+    position?: DiffPosition;
   }>;
+};
+
+/** GitLab supplies this only for comments attached to a merge-request diff. */
+export type DiffPosition = {
+  old_path?: string;
+  new_path?: string;
+  old_line?: number;
+  new_line?: number;
+  base_sha?: string;
+  start_sha?: string;
+  head_sha?: string;
 };
 
 export function requireGitLabConfig(env = process.env): GitLabConfig {
@@ -60,6 +79,15 @@ export class GitLabClient {
     private readonly fetchImpl: Fetch = fetch,
   ) {}
 
+  /**
+   * Retrieve the project's canonical metadata. `config.project` may be either
+   * its numeric GitLab ID or its namespace/project path; neither is assumed to
+   * be the project's current display name.
+   */
+  async getProject(): Promise<Project> {
+    return this.get<Project>(`/projects/${encodeURIComponent(this.config.project)}`);
+  }
+
   async listRecentMergeRequests(
     limit: number,
     state: "all" | "opened" | "closed" | "merged" = "all",
@@ -72,6 +100,12 @@ export class GitLabClient {
     });
 
     return this.get<MergeRequest[]>(`/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`);
+  }
+
+  async getMergeRequest(mergeRequestIid: number): Promise<MergeRequest> {
+    return this.get<MergeRequest>(
+      `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}`,
+    );
   }
 
   async listMergeRequestDiscussions(mergeRequestIid: number): Promise<Discussion[]> {

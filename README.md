@@ -25,10 +25,34 @@ GITLAB_PROJECT=group/project
 GITLAB_URL=https://gitlab.com
 ```
 
-Both agent loops expose two read-only GitLab tools: one lists the most recently
-updated merge requests and the other retrieves every discussion (including inline
-review comments) for a selected merge request. They have no write endpoint or
-repository access.
+Both agent loops expose read-only GitLab tools for canonical project metadata,
+recent merge requests, discussions, and normalized review comments. The
+`list_comments` tool can filter by author (case-insensitive name/username
+substring), merge request, state, date range, and resolved state. Inline results
+include old/new file and line fields plus the GitLab diff `commitSha` when it is
+available; that SHA is not a human-readable commit message. The tools have no
+write endpoint or repository access.
+
+Analyzed comments saved through `save_analyzed_comment` are kept in a local,
+versioned JSON ledger at `data/analyzed-comments.json` by default. Set
+`ANALYSIS_STORE_PATH` to place it elsewhere. The ledger is gitignored because
+it may contain review content and author information.
+
+The committed [comment category policy](config/comment-categories.json) defines
+the allowed category IDs, severity, default resolution, and recommended action.
+Use `get_comment_categories` before saving an analysis; deployments can set
+`COMMENT_CATEGORY_CONFIG_PATH` to use a validated replacement policy.
+
+Generate an offline HTML dashboard from saved analyses:
+
+```bash
+npm run report
+```
+
+It writes a timestamped file to `reports/` by default (or `REPORT_OUTPUT_DIR`)
+with summary metrics, category/resolution/author/trend charts, and a sortable,
+filterable comment table. Reports are gitignored because they contain local
+review data.
 
 All of `OPENAI_API_KEY`, `GITLAB_URL`, `GITLAB_TOKEN`, and `GITLAB_PROJECT`
 are required at startup. The agent stops with a configuration error if any are
@@ -42,12 +66,33 @@ npm run openai-sdk -- "Add a task to buy milk tomorrow"
 
 The default model is `gpt-5-mini`; set `OPENAI_MODEL` in `.env` to a model available to your account.
 
+## Review-analysis workflow
+
+After configuring GitLab and OpenAI, interact with the primary agent using
+natural-language requests such as:
+
+```bash
+npm start -- "What is the configured GitLab project name?"
+npm start -- "List unresolved review comments by Ava, including their file, line, and commit SHA."
+npm start -- "Categorize the review comments and save the analysis with a rationale."
+npm start -- "Generate an HTML report for saved security comments."
+```
+
+The agent uses the shared category policy before saving analysis. Its local JSON
+ledger and HTML reports may contain source-code review content, author names,
+and links; keep `ANALYSIS_STORE_PATH` and `REPORT_OUTPUT_DIR` in access-
+controlled local storage. Do not commit either output directory.
+
 ## Evals
 
 ```bash
 npm test       # no API key or model calls
 npm run evals  # local live evals; requires OPENAI_API_KEY only
 ```
+
+`npm test` also runs a deterministic full-flow fixture covering project lookup,
+filtered inline-comment retrieval, approved-category persistence, and an HTML
+report. It uses temporary paths and fixture GitLab responses only.
 
 The GitLab golden eval never calls a real GitLab instance. It injects a fixture
 client and verifies all of the following:
