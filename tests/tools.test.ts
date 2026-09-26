@@ -55,12 +55,12 @@ describe("agent tools", () => {
     });
     expect(
       Object.keys(
-        createAgentTools(
+        createAgentTools({
           client,
           analysisStore,
           categoryPolicy,
           reportGenerator,
-        ),
+        }),
       ),
     ).toEqual([
       ...Object.values(gitLabToolNames),

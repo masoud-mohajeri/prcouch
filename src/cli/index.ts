@@ -12,6 +12,7 @@ import {
 
 import { runGitLabAgent } from "../agent/agent.js";
 import { formatCliError } from "./error.js";
+import { createToolActivityReporter } from "./tool-activity.js";
 
 const terminalUi = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
@@ -28,7 +29,11 @@ const input = await getInput();
 const activity = terminalUi ? spinner() : undefined;
 try {
   activity?.start("Working on your request");
-  const result = await runGitLabAgent(input);
+  const result = await runGitLabAgent(input, {
+    onToolExecution: activity
+      ? createToolActivityReporter(activity)
+      : undefined,
+  });
   activity?.stop("Request complete");
 
   if (terminalUi) {

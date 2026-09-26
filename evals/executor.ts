@@ -12,7 +12,7 @@ export type EvalOutput = Pick<AgentResult, "text" | "toolCalls"> & {
  */
 export async function executeEvalCase(input: EvalInput): Promise<EvalOutput> {
   const { client, requests } = createGitLabFixture(input.gitLabFixture);
-  const result = await runGitLabAgent(input.query, client);
+  const result = await runGitLabAgent(input.query, { gitLabClient: client });
   return {
     text: result.text,
     toolCalls: result.toolCalls,

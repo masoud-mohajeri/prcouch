@@ -4,6 +4,7 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAgentTools } from "./tools/index.js";
 import { GitLabClient } from "../gitlab/client.js";
 import { getOpenAIConfig } from "./openai-config.js";
+import type { ToolExecutionObserver } from "./tool-events.js";
 
 export const systemPrompt = `You are a concise GitLab review analysis assistant.
 Use tools to retrieve GitLab merge-request data; never claim GitLab data was retrieved unless the tool result confirms it.
@@ -19,6 +20,11 @@ export type AgentResult = {
   text: string;
   toolCalls: string[];
   toolResults: unknown[];
+};
+
+export type RunGitLabAgentOptions = {
+  gitLabClient?: GitLabClient;
+  onToolExecution?: ToolExecutionObserver;
 };
 
 type InitialToolName =
@@ -69,7 +75,7 @@ export function getInitialToolForInput(
 
 export async function runGitLabAgent(
   input: string,
-  gitLabClient?: GitLabClient,
+  { gitLabClient, onToolExecution }: RunGitLabAgentOptions = {},
 ): Promise<AgentResult> {
   if (!process.env.OPENAI_API_KEY?.trim()) {
     throw new Error("Missing required configuration: OPENAI_API_KEY.");
@@ -88,7 +94,7 @@ export async function runGitLabAgent(
         : provider.responses(process.env.OPENAI_MODEL ?? "gpt-5-mini"),
     system: systemPrompt,
     prompt: input,
-    tools: createAgentTools(gitLabClient),
+    tools: createAgentTools({ client: gitLabClient, onToolExecution }),
     prepareStep: ({ stepNumber }) => {
       if (stepNumber === 0 && initialTool) {
         return { toolChoice: { type: "tool", toolName: initialTool } };
