@@ -19,7 +19,8 @@ describe("formatCliError", () => {
   });
 
   it("reports non-server errors without a stack trace", () => {
-    expect(formatCliError(new Error("Missing required configuration")))
-      .toBe("[error] Request failed: Missing required configuration");
+    expect(formatCliError(new Error("Missing required configuration"))).toBe(
+      "[error] Request failed: Missing required configuration",
+    );
   });
 });

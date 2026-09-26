@@ -3,24 +3,37 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve, sep } from "node:path";
 import { z } from "zod";
 
-import { AnalysisStore, resolutionSchema, type AnalyzedCommentRecord } from "./analysis-store.js";
-import { CommentCategoryPolicy, type CommentCategory } from "./comment-category-policy.js";
+import {
+  AnalysisStore,
+  resolutionSchema,
+  type AnalyzedCommentRecord,
+} from "./analysis-store.js";
+import {
+  CommentCategoryPolicy,
+  type CommentCategory,
+} from "./comment-category-policy.js";
 
-export const reportFiltersSchema = z.object({
-  authorName: z.string().trim().min(1).optional(),
-  category: z.string().trim().min(1).optional(),
-  resolution: resolutionSchema.optional(),
-  analyzedAfter: z.string().datetime({ offset: true }).optional(),
-  analyzedBefore: z.string().datetime({ offset: true }).optional(),
-}).superRefine(({ analyzedAfter, analyzedBefore }, context) => {
-  if (analyzedAfter && analyzedBefore && new Date(analyzedAfter) > new Date(analyzedBefore)) {
-    context.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["analyzedAfter"],
-      message: "analyzedAfter must be before or equal to analyzedBefore.",
-    });
-  }
-});
+export const reportFiltersSchema = z
+  .object({
+    authorName: z.string().trim().min(1).optional(),
+    category: z.string().trim().min(1).optional(),
+    resolution: resolutionSchema.optional(),
+    analyzedAfter: z.string().datetime({ offset: true }).optional(),
+    analyzedBefore: z.string().datetime({ offset: true }).optional(),
+  })
+  .superRefine(({ analyzedAfter, analyzedBefore }, context) => {
+    if (
+      analyzedAfter &&
+      analyzedBefore &&
+      new Date(analyzedAfter) > new Date(analyzedBefore)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["analyzedAfter"],
+        message: "analyzedAfter must be before or equal to analyzedBefore.",
+      });
+    }
+  });
 
 export type ReportFilters = z.input<typeof reportFiltersSchema>;
 
@@ -56,36 +69,63 @@ export class CommentReportGenerator {
     ]);
     const filteredRecords = records
       .filter((record) => matchesFilters(record, parsedFilters))
-      .sort((left, right) => right.analyzedAt.localeCompare(left.analyzedAt) || right.id.localeCompare(left.id));
+      .sort(
+        (left, right) =>
+          right.analyzedAt.localeCompare(left.analyzedAt) ||
+          right.id.localeCompare(left.id),
+      );
     const generatedAt = new Date().toISOString();
     const outputPath = this.createOutputPath(generatedAt);
     await mkdir(this.outputDirectory, { recursive: true });
-    await writeFile(outputPath, renderReport(filteredRecords, categories, parsedFilters, generatedAt), "utf8");
+    await writeFile(
+      outputPath,
+      renderReport(filteredRecords, categories, parsedFilters, generatedAt),
+      "utf8",
+    );
 
-    return { path: outputPath, generatedAt, recordCount: filteredRecords.length, filters: parsedFilters };
+    return {
+      path: outputPath,
+      generatedAt,
+      recordCount: filteredRecords.length,
+      filters: parsedFilters,
+    };
   }
 
   private createOutputPath(generatedAt: string): string {
     const timestamp = generatedAt.replace(/[:.]/g, "-");
-    const candidate = resolve(this.outputDirectory, `comment-report-${timestamp}-${randomBytes(4).toString("hex")}.html`);
+    const candidate = resolve(
+      this.outputDirectory,
+      `comment-report-${timestamp}-${randomBytes(4).toString("hex")}.html`,
+    );
     if (!candidate.startsWith(`${this.outputDirectory}${sep}`)) {
-      throw new Error("Generated report path escaped the configured report directory.");
+      throw new Error(
+        "Generated report path escaped the configured report directory.",
+      );
     }
     return candidate;
   }
 }
 
-function matchesFilters(record: AnalyzedCommentRecord, filters: z.output<typeof reportFiltersSchema>): boolean {
+function matchesFilters(
+  record: AnalyzedCommentRecord,
+  filters: z.output<typeof reportFiltersSchema>,
+): boolean {
   if (filters.category && record.category !== filters.category) return false;
-  if (filters.resolution && record.resolution !== filters.resolution) return false;
+  if (filters.resolution && record.resolution !== filters.resolution)
+    return false;
   if (filters.authorName) {
     const needle = filters.authorName.toLocaleLowerCase();
-    if (!record.comment.author.name.toLocaleLowerCase().includes(needle)
-      && !record.comment.author.username.toLocaleLowerCase().includes(needle)) return false;
+    if (
+      !record.comment.author.name.toLocaleLowerCase().includes(needle) &&
+      !record.comment.author.username.toLocaleLowerCase().includes(needle)
+    )
+      return false;
   }
   const analyzedAt = new Date(record.analyzedAt);
-  return (!filters.analyzedAfter || analyzedAt >= new Date(filters.analyzedAfter))
-    && (!filters.analyzedBefore || analyzedAt <= new Date(filters.analyzedBefore));
+  return (
+    (!filters.analyzedAfter || analyzedAt >= new Date(filters.analyzedAfter)) &&
+    (!filters.analyzedBefore || analyzedAt <= new Date(filters.analyzedBefore))
+  );
 }
 
 function renderReport(
@@ -94,13 +134,23 @@ function renderReport(
   filters: z.output<typeof reportFiltersSchema>,
   generatedAt: string,
 ): string {
-  const categoryById = new Map(categories.map((category) => [category.id, category]));
-  const openCount = records.filter((record) => record.resolution === "open" || record.resolution === "needs_discussion").length;
+  const categoryById = new Map(
+    categories.map((category) => [category.id, category]),
+  );
+  const openCount = records.filter(
+    (record) =>
+      record.resolution === "open" || record.resolution === "needs_discussion",
+  ).length;
   const resolvedCount = records.length - openCount;
-  const projectNames = [...new Set(records.map((record) => record.project.pathWithNamespace))];
-  const projectSummary = projectNames.length === 0
-    ? "No analyzed comments"
-    : projectNames.length === 1 ? projectNames[0] : `${projectNames.length} projects`;
+  const projectNames = [
+    ...new Set(records.map((record) => record.project.pathWithNamespace)),
+  ];
+  const projectSummary =
+    projectNames.length === 0
+      ? "No analyzed comments"
+      : projectNames.length === 1
+        ? projectNames[0]
+        : `${projectNames.length} projects`;
   const nonce = randomBytes(16).toString("base64");
   const filterSummary = formatFilters(filters);
 
@@ -140,14 +190,38 @@ function renderReport(
     ${metricCard("Resolved analysis", resolvedCount)}
     ${metricCard("Authors", new Set(records.map((record) => record.comment.author.username)).size)}
   </section>
-  ${records.length === 0 ? '<p class="empty">No matching analyzed comments.</p>' : `
+  ${
+    records.length === 0
+      ? '<p class="empty">No matching analyzed comments.</p>'
+      : `
   <section class="charts" aria-label="Charts">
-    ${barChart("Categories", countBy(records, (record) => categoryById.get(record.category)?.label ?? record.category), "bar")}
-    ${barChart("Resolutions", countBy(records, (record) => record.resolution.replace(/_/g, " ")), "bar-alt")}
-    ${barChart("Comments by author", countBy(records, (record) => record.comment.author.name), "bar")}
-    ${barChart("Analysis trend", countBy(records, (record) => record.analyzedAt.slice(0, 10)), "bar-alt", true)}
+    ${barChart(
+      "Categories",
+      countBy(
+        records,
+        (record) => categoryById.get(record.category)?.label ?? record.category,
+      ),
+      "bar",
+    )}
+    ${barChart(
+      "Resolutions",
+      countBy(records, (record) => record.resolution.replace(/_/g, " ")),
+      "bar-alt",
+    )}
+    ${barChart(
+      "Comments by author",
+      countBy(records, (record) => record.comment.author.name),
+      "bar",
+    )}
+    ${barChart(
+      "Analysis trend",
+      countBy(records, (record) => record.analyzedAt.slice(0, 10)),
+      "bar-alt",
+      true,
+    )}
   </section>
-  ${detailTable(records, categoryById)}`}
+  ${detailTable(records, categoryById)}`
+  }
   <script nonce="${nonce}">
     const query = document.querySelector('#comment-filter');
     const rows = [...document.querySelectorAll('#comment-rows tr')];
@@ -173,35 +247,58 @@ function metricCard(label: string, value: number): string {
   return `<article class="card"><div class="muted">${escapeHtml(label)}</div><div class="metric">${value}</div></article>`;
 }
 
-function countBy<T>(items: T[], key: (item: T) => string): Array<[string, number]> {
+function countBy<T>(
+  items: T[],
+  key: (item: T) => string,
+): Array<[string, number]> {
   const counts = new Map<string, number>();
   for (const item of items) {
     const label = key(item);
     counts.set(label, (counts.get(label) ?? 0) + 1);
   }
-  return [...counts.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  return [...counts.entries()].sort(
+    (left, right) => right[1] - left[1] || left[0].localeCompare(right[0]),
+  );
 }
 
-function barChart(title: string, items: Array<[string, number]>, colorClass: string, chronological = false): string {
-  const sorted = chronological ? [...items].sort((left, right) => left[0].localeCompare(right[0])) : items;
-  if (sorted.length === 0) return `<article class="chart"><h2>${escapeHtml(title)}</h2><p class="muted">No data</p></article>`;
+function barChart(
+  title: string,
+  items: Array<[string, number]>,
+  colorClass: string,
+  chronological = false,
+): string {
+  const sorted = chronological
+    ? [...items].sort((left, right) => left[0].localeCompare(right[0]))
+    : items;
+  if (sorted.length === 0)
+    return `<article class="chart"><h2>${escapeHtml(title)}</h2><p class="muted">No data</p></article>`;
   const max = Math.max(...sorted.map(([, value]) => value));
   const rowHeight = 30;
   const height = 45 + sorted.length * rowHeight;
-  const rows = sorted.map(([label, value], index) => {
-    const y = 30 + index * rowHeight;
-    const width = Math.max(2, Math.round((value / max) * 320));
-    return `<text class="bar-label" x="0" y="${y + 12}">${escapeHtml(label)}</text><rect class="${colorClass}" x="150" y="${y}" width="${width}" height="16" rx="4"></rect><text class="bar-value" x="${160 + width}" y="${y + 12}">${value}</text>`;
-  }).join("");
+  const rows = sorted
+    .map(([label, value], index) => {
+      const y = 30 + index * rowHeight;
+      const width = Math.max(2, Math.round((value / max) * 320));
+      return `<text class="bar-label" x="0" y="${y + 12}">${escapeHtml(label)}</text><rect class="${colorClass}" x="150" y="${y}" width="${width}" height="16" rx="4"></rect><text class="bar-value" x="${160 + width}" y="${y + 12}">${value}</text>`;
+    })
+    .join("");
   return `<article class="chart"><h2>${escapeHtml(title)}</h2><svg viewBox="0 0 520 ${height}" role="img" aria-label="${escapeHtml(title)} bar chart"><line class="axis" x1="150" y1="20" x2="150" y2="${height - 8}"></line>${rows}</svg></article>`;
 }
 
-function detailTable(records: AnalyzedCommentRecord[], categoryById: Map<string, CommentCategory>): string {
-  const rows = records.map((record) => {
-    const category = categoryById.get(record.category)?.label ?? record.category;
-    const source = safeLink(record.comment.sourceUrl, "Source");
-    const mergeRequest = safeLink(record.mergeRequest.webUrl, `!${record.mergeRequest.iid}`);
-    return `<tr>
+function detailTable(
+  records: AnalyzedCommentRecord[],
+  categoryById: Map<string, CommentCategory>,
+): string {
+  const rows = records
+    .map((record) => {
+      const category =
+        categoryById.get(record.category)?.label ?? record.category;
+      const source = safeLink(record.comment.sourceUrl, "Source");
+      const mergeRequest = safeLink(
+        record.mergeRequest.webUrl,
+        `!${record.mergeRequest.iid}`,
+      );
+      return `<tr>
       <td>${escapeHtml(record.comment.author.name)}<br><span class="muted">@${escapeHtml(record.comment.author.username)}</span></td>
       <td>${escapeHtml(category)}</td>
       <td>${escapeHtml(record.resolution.replace(/_/g, " "))}</td>
@@ -212,7 +309,8 @@ function detailTable(records: AnalyzedCommentRecord[], categoryById: Map<string,
       <td class="excerpt">${escapeHtml(record.comment.body)}</td>
       <td>${source}</td>
     </tr>`;
-  }).join("");
+    })
+    .join("");
   return `<section class="table-card"><div class="controls"><h2>Analyzed comments</h2><input id="comment-filter" type="search" placeholder="Filter this report" aria-label="Filter analyzed comments"></div><div style="overflow:auto"><table><thead><tr>
     ${["Author", "Category", "Resolution", "Merge request", "Location", "Commit SHA", "Dates", "Comment", "Link"].map((label, index) => `<th><button type="button" data-sort-column="${index}">${escapeHtml(label)} ↕</button></th>`).join("")}
   </tr></thead><tbody id="comment-rows">${rows}</tbody></table></div></section>`;
@@ -236,7 +334,9 @@ function formatFilters(filters: z.output<typeof reportFiltersSchema>): string {
 
 function formatDate(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? value : date.toISOString().replace("T", " ").replace(".000Z", "Z");
+  return Number.isNaN(date.getTime())
+    ? value
+    : date.toISOString().replace("T", " ").replace(".000Z", "Z");
 }
 
 function safeLink(value: string, label: string): string {
@@ -250,9 +350,17 @@ function safeLink(value: string, label: string): string {
 }
 
 function escapeHtml(value: string | number): string {
-  return String(value).replace(/[&<>'"]/g, (character) => ({
-    "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
-  })[character]!);
+  return String(value).replace(
+    /[&<>'"]/g,
+    (character) =>
+      ({
+        "&": "&amp;",
+        "<": "&lt;",
+        ">": "&gt;",
+        "'": "&#39;",
+        '"': "&quot;",
+      })[character]!,
+  );
 }
 
 function escapeAttribute(value: string): string {

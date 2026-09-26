@@ -1,6 +1,14 @@
 import "dotenv/config";
 
-import { cancel, intro, isCancel, log, outro, spinner, text } from "@clack/prompts";
+import {
+  cancel,
+  intro,
+  isCancel,
+  log,
+  outro,
+  spinner,
+  text,
+} from "@clack/prompts";
 
 import { runGitLabAgent } from "./agent.js";
 import { formatCliError } from "./cli-error.js";
@@ -8,7 +16,9 @@ import { formatCliError } from "./cli-error.js";
 const terminalUi = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 
 if (!process.env.OPENAI_API_KEY) {
-  showError("OPENAI_API_KEY is required. Copy .env.example to .env and add it.");
+  showError(
+    "OPENAI_API_KEY is required. Copy .env.example to .env and add it.",
+  );
   process.exit(1);
 }
 
@@ -23,11 +33,13 @@ try {
 
   if (terminalUi) {
     console.log(`\nResponse\n\n${result.text}`);
-    if (result.toolCalls.length) console.log(`\nTools used: ${formatToolCalls(result.toolCalls)}`);
+    if (result.toolCalls.length)
+      console.log(`\nTools used: ${formatToolCalls(result.toolCalls)}`);
     outro("Done");
   } else {
     console.log(result.text);
-    if (result.toolCalls.length) console.log(`\nTools used: ${formatToolCalls(result.toolCalls)}`);
+    if (result.toolCalls.length)
+      console.log(`\nTools used: ${formatToolCalls(result.toolCalls)}`);
   }
 } catch (error) {
   activity?.stop("Request failed", 1);
@@ -47,7 +59,8 @@ async function getInput(): Promise<string> {
   const response = await text({
     message: "What would you like to do?",
     placeholder: "List unresolved review comments in recent merge requests",
-    validate: (value) => value.trim() ? undefined : "Enter a request to continue.",
+    validate: (value) =>
+      value.trim() ? undefined : "Enter a request to continue.",
   });
 
   if (isCancel(response)) {
@@ -68,7 +81,10 @@ function showError(message: string): void {
 
 function formatToolCalls(toolCalls: string[]): string {
   const counts = new Map<string, number>();
-  for (const toolCall of toolCalls) counts.set(toolCall, (counts.get(toolCall) ?? 0) + 1);
+  for (const toolCall of toolCalls)
+    counts.set(toolCall, (counts.get(toolCall) ?? 0) + 1);
 
-  return [...counts].map(([name, count]) => count === 1 ? name : `${name} × ${count}`).join(", ");
+  return [...counts]
+    .map(([name, count]) => (count === 1 ? name : `${name} × ${count}`))
+    .join(", ");
 }

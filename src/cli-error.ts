@@ -16,7 +16,9 @@ type ProviderError = {
 export function formatCliError(error: unknown): string {
   const providerError = findProviderError(error);
   if (providerError && providerError.statusCode >= 500) {
-    const requestId = providerError.requestId ? ` Request ID: ${providerError.requestId}.` : "";
+    const requestId = providerError.requestId
+      ? ` Request ID: ${providerError.requestId}.`
+      : "";
     return `[error] Provider server error (HTTP ${providerError.statusCode}): ${providerError.message}.${requestId} Try again shortly; if it persists, contact your API provider.`;
   }
 
@@ -36,7 +38,10 @@ function findProviderError(error: unknown): ProviderError | undefined {
     if (typeof statusCode === "number") {
       return {
         statusCode,
-        message: typeof current.message === "string" ? current.message : "Unknown provider error",
+        message:
+          typeof current.message === "string"
+            ? current.message
+            : "Unknown provider error",
         requestId: getHeader(current.responseHeaders, "x-request-id"),
       };
     }

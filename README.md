@@ -107,15 +107,15 @@ data.
 Copy `.env.example` to see every option. In addition to the required agent
 credentials, these settings are available:
 
-| Setting | Purpose |
-| --- | --- |
-| `OPENAI_MODEL` | Overrides the default `gpt-5-mini` model. |
-| `OPENAI_BASE_URL` | Optional OpenAI-compatible API endpoint; defaults to `https://api.openai.com/v1`. |
-| `OPENAI_API_MODE` | `responses` or `chat`; defaults to `responses` for OpenAI and `chat` for a custom base URL. |
-| `ANALYSIS_STORE_PATH` | Changes the local JSON analysis ledger path. |
-| `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy. |
-| `REPORT_OUTPUT_DIR` | Changes where HTML reports are written. |
-| `LMNR_*` | Configures self-hosted Laminar evaluation tracing. |
+| Setting                        | Purpose                                                                                     |
+| ------------------------------ | ------------------------------------------------------------------------------------------- |
+| `OPENAI_MODEL`                 | Overrides the default `gpt-5-mini` model.                                                   |
+| `OPENAI_BASE_URL`              | Optional OpenAI-compatible API endpoint; defaults to `https://api.openai.com/v1`.           |
+| `OPENAI_API_MODE`              | `responses` or `chat`; defaults to `responses` for OpenAI and `chat` for a custom base URL. |
+| `ANALYSIS_STORE_PATH`          | Changes the local JSON analysis ledger path.                                                |
+| `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy.                                              |
+| `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
+| `LMNR_*`                       | Configures self-hosted Laminar evaluation tracing.                                          |
 
 ## Tests and evals
 

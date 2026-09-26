@@ -4,8 +4,14 @@ import { getInitialToolForInput } from "../src/agent.js";
 
 describe("getInitialToolForInput", () => {
   it.each([
-    ["Show me the review comments on the last 2 PRs.", "list_recent_merge_requests"],
-    ["List recent review comments in merge requests.", "list_recent_merge_requests"],
+    [
+      "Show me the review comments on the last 2 PRs.",
+      "list_recent_merge_requests",
+    ],
+    [
+      "List recent review comments in merge requests.",
+      "list_recent_merge_requests",
+    ],
     ["List unresolved review comments.", "list_comments"],
     ["What is the configured project name?", "get_project"],
     ["Show comment categories.", "get_comment_categories"],
@@ -15,6 +21,8 @@ describe("getInitialToolForInput", () => {
   });
 
   it("leaves ambiguous requests to the model", () => {
-    expect(getInitialToolForInput("Can you help me plan my week?")).toBeUndefined();
+    expect(
+      getInitialToolForInput("Can you help me plan my week?"),
+    ).toBeUndefined();
   });
 });

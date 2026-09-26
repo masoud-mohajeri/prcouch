@@ -20,5 +20,11 @@ export const rawRequiredFields = {
   listRecentMergeRequests: ["limit", "state"],
   getMergeRequestDiscussions: ["mergeRequestIid"],
   listComments: ["state", "includeResolved", "limit"],
-  saveAnalyzedComment: ["project", "mergeRequest", "comment", "category", "resolution"],
+  saveAnalyzedComment: [
+    "project",
+    "mergeRequest",
+    "comment",
+    "category",
+    "resolution",
+  ],
 } as const;

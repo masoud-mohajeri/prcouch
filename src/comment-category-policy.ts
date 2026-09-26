@@ -5,7 +5,9 @@ import { z } from "zod";
 import { resolutionSchema } from "./analysis-store.js";
 
 const categorySchema = z.object({
-  id: z.string().regex(/^[a-z][a-z0-9_]*$/, "Category IDs must be lowercase snake_case."),
+  id: z
+    .string()
+    .regex(/^[a-z][a-z0-9_]*$/, "Category IDs must be lowercase snake_case."),
   label: z.string().trim().min(1),
   description: z.string().trim().min(1),
   severity: z.enum(["critical", "high", "medium", "low", "info"]),
@@ -13,22 +15,24 @@ const categorySchema = z.object({
   action: z.string().trim().min(1),
 });
 
-export const commentCategoryConfigSchema = z.object({
-  version: z.literal(1),
-  categories: z.array(categorySchema).min(1),
-}).superRefine(({ categories }, context) => {
-  const ids = new Set<string>();
-  for (const [index, category] of categories.entries()) {
-    if (ids.has(category.id)) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["categories", index, "id"],
-        message: `Duplicate category ID: ${category.id}.`,
-      });
+export const commentCategoryConfigSchema = z
+  .object({
+    version: z.literal(1),
+    categories: z.array(categorySchema).min(1),
+  })
+  .superRefine(({ categories }, context) => {
+    const ids = new Set<string>();
+    for (const [index, category] of categories.entries()) {
+      if (ids.has(category.id)) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["categories", index, "id"],
+          message: `Duplicate category ID: ${category.id}.`,
+        });
+      }
+      ids.add(category.id);
     }
-    ids.add(category.id);
-  }
-});
+  });
 
 export type CommentCategory = z.infer<typeof categorySchema>;
 export type CommentCategoryConfig = z.infer<typeof commentCategoryConfigSchema>;
@@ -52,10 +56,16 @@ export class CommentCategoryPolicy {
   }
 
   async require(categoryId: string): Promise<CommentCategory> {
-    const category = (await this.load()).categories.find((item) => item.id === categoryId);
+    const category = (await this.load()).categories.find(
+      (item) => item.id === categoryId,
+    );
     if (category) return category;
-    const validIds = (await this.load()).categories.map((item) => item.id).join(", ");
-    throw new Error(`Unknown comment category "${categoryId}". Use one of: ${validIds}.`);
+    const validIds = (await this.load()).categories
+      .map((item) => item.id)
+      .join(", ");
+    throw new Error(
+      `Unknown comment category "${categoryId}". Use one of: ${validIds}.`,
+    );
   }
 
   private load(): Promise<CommentCategoryConfig> {
@@ -68,20 +78,28 @@ export class CommentCategoryPolicy {
     try {
       text = await readFile(this.path, "utf8");
     } catch (error: unknown) {
-      throw new Error(`Unable to read comment category policy at ${this.path}: ${errorMessage(error)}`);
+      throw new Error(
+        `Unable to read comment category policy at ${this.path}: ${errorMessage(error)}`,
+      );
     }
     let data: unknown;
     try {
       data = JSON.parse(text);
     } catch (error: unknown) {
-      throw new Error(`Comment category policy contains malformed JSON at ${this.path}: ${errorMessage(error)}`);
+      throw new Error(
+        `Comment category policy contains malformed JSON at ${this.path}: ${errorMessage(error)}`,
+      );
     }
     if (isObject(data) && "version" in data && data.version !== 1) {
-      throw new Error(`Comment category policy at ${this.path} has unsupported version ${String(data.version)}.`);
+      throw new Error(
+        `Comment category policy at ${this.path} has unsupported version ${String(data.version)}.`,
+      );
     }
     const parsed = commentCategoryConfigSchema.safeParse(data);
     if (!parsed.success) {
-      throw new Error(`Comment category policy at ${this.path} has an invalid schema: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`);
+      throw new Error(
+        `Comment category policy at ${this.path} has an invalid schema: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+      );
     }
     return parsed.data;
   }

@@ -9,7 +9,9 @@ import { evaluators } from "./scorers.js";
 const projectApiKey = required("LMNR_PROJECT_API_KEY");
 const baseUrl = process.env.LMNR_BASE_URL?.trim() || "http://localhost";
 if (new URL(baseUrl).port) {
-  throw new Error("LMNR_BASE_URL must be only the scheme and host; set ports with LMNR_HTTP_PORT and LMNR_GRPC_PORT.");
+  throw new Error(
+    "LMNR_BASE_URL must be only the scheme and host; set ports with LMNR_HTTP_PORT and LMNR_GRPC_PORT.",
+  );
 }
 
 const result = await evaluate({

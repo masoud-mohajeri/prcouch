@@ -15,6 +15,9 @@
     "laminar:down": "bash scripts/laminar.sh down",
     "laminar:logs": "bash scripts/laminar.sh logs",
     "laminar:update": "bash scripts/laminar.sh update",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "prepare": "husky",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -32,6 +35,8 @@
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "husky": "^9.1.7",
+    "prettier": "^3.8.3",
     "tsx": "^4.0.0",
     "typescript": "^5.0.0",
     "vitest": "^3.0.0"

@@ -62,7 +62,9 @@ export function requireGitLabConfig(env = process.env): GitLabConfig {
     !project && "GITLAB_PROJECT",
   ].filter(Boolean);
   if (missing.length) {
-    throw new Error(`Missing required GitLab configuration: ${missing.join(", ")}.`);
+    throw new Error(
+      `Missing required GitLab configuration: ${missing.join(", ")}.`,
+    );
   }
 
   return {
@@ -85,7 +87,9 @@ export class GitLabClient {
    * be the project's current display name.
    */
   async getProject(): Promise<Project> {
-    return this.get<Project>(`/projects/${encodeURIComponent(this.config.project)}`);
+    return this.get<Project>(
+      `/projects/${encodeURIComponent(this.config.project)}`,
+    );
   }
 
   async listRecentMergeRequests(
@@ -99,7 +103,9 @@ export class GitLabClient {
       per_page: String(limit),
     });
 
-    return this.get<MergeRequest[]>(`/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`);
+    return this.get<MergeRequest[]>(
+      `/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`,
+    );
   }
 
   async getMergeRequest(mergeRequestIid: number): Promise<MergeRequest> {
@@ -108,7 +114,9 @@ export class GitLabClient {
     );
   }
 
-  async listMergeRequestDiscussions(mergeRequestIid: number): Promise<Discussion[]> {
+  async listMergeRequestDiscussions(
+    mergeRequestIid: number,
+  ): Promise<Discussion[]> {
     const discussions: Discussion[] = [];
     let page = 1;
 
@@ -126,32 +134,43 @@ export class GitLabClient {
       }
     }
 
-    throw new Error("GitLab returned more than 100 pages of discussions for this merge request.");
+    throw new Error(
+      "GitLab returned more than 100 pages of discussions for this merge request.",
+    );
   }
 
   private async get<T>(path: string): Promise<T> {
     return (await this.request<T>(path)).data;
   }
 
-  private async getPage<T>(path: string): Promise<{ data: T; nextPage: string | null }> {
+  private async getPage<T>(
+    path: string,
+  ): Promise<{ data: T; nextPage: string | null }> {
     const response = await this.request<T>(path);
     return { data: response.data, nextPage: response.nextPage };
   }
 
-  private async request<T>(path: string): Promise<{ data: T; nextPage: string | null }> {
-    const response = await this.fetchImpl(`${this.config.baseUrl}/api/v4${path}`, {
-      headers: {
-        "PRIVATE-TOKEN": this.config.token,
-        Accept: "application/json",
+  private async request<T>(
+    path: string,
+  ): Promise<{ data: T; nextPage: string | null }> {
+    const response = await this.fetchImpl(
+      `${this.config.baseUrl}/api/v4${path}`,
+      {
+        headers: {
+          "PRIVATE-TOKEN": this.config.token,
+          Accept: "application/json",
+        },
       },
-    });
+    );
 
     if (!response.ok) {
-      throw new Error(`GitLab request failed (${response.status} ${response.statusText}).`);
+      throw new Error(
+        `GitLab request failed (${response.status} ${response.statusText}).`,
+      );
     }
 
     return {
-      data: await response.json() as T,
+      data: (await response.json()) as T,
       nextPage: response.headers.get("x-next-page"),
     };
   }

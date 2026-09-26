@@ -104,7 +104,9 @@ export class AnalysisStore {
         analyzedAt: new Date().toISOString(),
       };
       const file = await this.read();
-      const existingIndex = file.records.findIndex((item) => item.id === record.id);
+      const existingIndex = file.records.findIndex(
+        (item) => item.id === record.id,
+      );
       if (existingIndex >= 0) file.records[existingIndex] = record;
       else file.records.push(record);
       await this.write(file);
@@ -126,14 +128,20 @@ export class AnalysisStore {
     try {
       data = JSON.parse(contents);
     } catch (error: unknown) {
-      throw new Error(`Analysis store contains malformed JSON at ${this.path}: ${errorMessage(error)}`);
+      throw new Error(
+        `Analysis store contains malformed JSON at ${this.path}: ${errorMessage(error)}`,
+      );
     }
     if (isObject(data) && "version" in data && data.version !== 1) {
-      throw new Error(`Analysis store at ${this.path} has unsupported version ${String(data.version)}.`);
+      throw new Error(
+        `Analysis store at ${this.path} has unsupported version ${String(data.version)}.`,
+      );
     }
     const parsed = analysisFileSchema.safeParse(data);
     if (!parsed.success) {
-      throw new Error(`Analysis store at ${this.path} has an invalid schema: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`);
+      throw new Error(
+        `Analysis store at ${this.path} has an invalid schema: ${parsed.error.issues.map((issue) => issue.message).join("; ")}`,
+      );
     }
     return parsed.data;
   }
@@ -142,7 +150,11 @@ export class AnalysisStore {
     await mkdir(dirname(this.path), { recursive: true });
     const temporaryPath = `${this.path}.${process.pid}.${randomUUID()}.tmp`;
     try {
-      await writeFile(temporaryPath, `${JSON.stringify(file, null, 2)}\n`, "utf8");
+      await writeFile(
+        temporaryPath,
+        `${JSON.stringify(file, null, 2)}\n`,
+        "utf8",
+      );
       await rename(temporaryPath, this.path);
     } catch (error) {
       await rm(temporaryPath, { force: true }).catch(() => undefined);
@@ -157,13 +169,19 @@ export class AnalysisStore {
     try {
       return await pendingOperation;
     } finally {
-      if (writeLocks.get(this.path) === pendingOperation) writeLocks.delete(this.path);
+      if (writeLocks.get(this.path) === pendingOperation)
+        writeLocks.delete(this.path);
     }
   }
 }
 
 function isMissingFile(error: unknown): error is NodeJS.ErrnoException {
-  return typeof error === "object" && error !== null && "code" in error && error.code === "ENOENT";
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "ENOENT"
+  );
 }
 
 function isObject(value: unknown): value is Record<string, unknown> {

@@ -5,21 +5,44 @@ import { describe, expect, it } from "vitest";
 import { AnalysisStore } from "../src/analysis-store.js";
 import { CommentCategoryPolicy } from "../src/comment-category-policy.js";
 import { GitLabClient } from "../src/gitlab.js";
-import { gitLabToolNameList, gitLabToolNames, rawRequiredFields } from "../src/gitlab-tool-contracts.js";
+import {
+  gitLabToolNameList,
+  gitLabToolNames,
+  rawRequiredFields,
+} from "../src/gitlab-tool-contracts.js";
 import { CommentReportGenerator } from "../src/report.js";
 import { createGitLabTools } from "../src/tools.js";
 
 describe("GitLab tool contracts", () => {
   it("keeps the AI SDK and raw SDK GitLab-analysis tool names in one shared contract", () => {
     const client = new GitLabClient(
-      { baseUrl: "https://gitlab.example.test", token: "test", project: "team/service" },
+      {
+        baseUrl: "https://gitlab.example.test",
+        token: "test",
+        project: "team/service",
+      },
       async () => new Response("not used", { status: 500 }),
     );
-    const analysisStore = new AnalysisStore(join(tmpdir(), "prcouch-tool-contracts.json"));
+    const analysisStore = new AnalysisStore(
+      join(tmpdir(), "prcouch-tool-contracts.json"),
+    );
     const categoryPolicy = new CommentCategoryPolicy();
-    const reportGenerator = new CommentReportGenerator(analysisStore, categoryPolicy, join(tmpdir(), "prcouch-tool-reports"));
+    const reportGenerator = new CommentReportGenerator(
+      analysisStore,
+      categoryPolicy,
+      join(tmpdir(), "prcouch-tool-reports"),
+    );
 
-    expect(Object.keys(createGitLabTools(client, analysisStore, categoryPolicy, reportGenerator))).toEqual(gitLabToolNameList);
+    expect(
+      Object.keys(
+        createGitLabTools(
+          client,
+          analysisStore,
+          categoryPolicy,
+          reportGenerator,
+        ),
+      ),
+    ).toEqual(gitLabToolNameList);
     expect(gitLabToolNames).toEqual({
       getProject: "get_project",
       listRecentMergeRequests: "list_recent_merge_requests",
@@ -36,7 +59,13 @@ describe("GitLab tool contracts", () => {
       listRecentMergeRequests: ["limit", "state"],
       getMergeRequestDiscussions: ["mergeRequestIid"],
       listComments: ["state", "includeResolved", "limit"],
-      saveAnalyzedComment: ["project", "mergeRequest", "comment", "category", "resolution"],
+      saveAnalyzedComment: [
+        "project",
+        "mergeRequest",
+        "comment",
+        "category",
+        "resolution",
+      ],
     });
   });
 });

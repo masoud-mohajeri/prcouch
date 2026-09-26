@@ -1,4 +1,9 @@
-import type { DiffPosition, GitLabClient, MergeRequest, Project } from "./gitlab.js";
+import type {
+  DiffPosition,
+  GitLabClient,
+  MergeRequest,
+  Project,
+} from "./gitlab.js";
 
 const MAX_MERGE_REQUESTS = 100;
 const DISCUSSION_CONCURRENCY = 5;
@@ -84,37 +89,70 @@ export class CommentService {
     const offset = parseCursor(query.cursor);
     const projectRequest = this.gitlab.getProject();
     const mergeRequestsRequest = query.mergeRequestIid
-      ? this.gitlab.getMergeRequest(query.mergeRequestIid).then((mergeRequest) => [mergeRequest])
+      ? this.gitlab
+          .getMergeRequest(query.mergeRequestIid)
+          .then((mergeRequest) => [mergeRequest])
       : this.gitlab.listRecentMergeRequests(this.maxMergeRequests, query.state);
-    const [project, mergeRequests] = await Promise.all([projectRequest, mergeRequestsRequest]);
-    const selectedMergeRequests = query.state === "all"
-      ? mergeRequests
-      : mergeRequests.filter((mergeRequest) => mergeRequest.state === query.state);
+    const [project, mergeRequests] = await Promise.all([
+      projectRequest,
+      mergeRequestsRequest,
+    ]);
+    const selectedMergeRequests =
+      query.state === "all"
+        ? mergeRequests
+        : mergeRequests.filter(
+            (mergeRequest) => mergeRequest.state === query.state,
+          );
     const discussions = await mapWithConcurrency(
       selectedMergeRequests,
       this.discussionConcurrency,
       async (mergeRequest) => ({
         mergeRequest,
-        discussions: await this.gitlab.listMergeRequestDiscussions(mergeRequest.iid),
+        discussions: await this.gitlab.listMergeRequestDiscussions(
+          mergeRequest.iid,
+        ),
       }),
     );
-    const createdAfter = query.createdAfter ? dateFromFilter(query.createdAfter, "createdAfter") : undefined;
-    const createdBefore = query.createdBefore ? dateFromFilter(query.createdBefore, "createdBefore") : undefined;
+    const createdAfter = query.createdAfter
+      ? dateFromFilter(query.createdAfter, "createdAfter")
+      : undefined;
+    const createdBefore = query.createdBefore
+      ? dateFromFilter(query.createdBefore, "createdBefore")
+      : undefined;
     if (createdAfter && createdBefore && createdAfter > createdBefore) {
       throw new Error("createdAfter must be before or equal to createdBefore.");
     }
 
     const comments = discussions
-      .flatMap(({ mergeRequest, discussions: mergeRequestDiscussions }) => mergeRequestDiscussions.flatMap((discussion) => {
-        const discussionHistory = discussion.notes
-          .map((note) => normalizeDiscussionHistoryNote(mergeRequest, note))
-          .sort((left, right) => left.createdAt.localeCompare(right.createdAt) || left.noteId - right.noteId);
-        return discussion.notes
-          .filter((note) => !note.system)
-          .map((note) => normalizeComment(mergeRequest, discussion.id, note, discussionHistory));
-      }))
-      .filter((comment) => matchesQuery(comment, query, createdAfter, createdBefore))
-      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || right.noteId - left.noteId);
+      .flatMap(({ mergeRequest, discussions: mergeRequestDiscussions }) =>
+        mergeRequestDiscussions.flatMap((discussion) => {
+          const discussionHistory = discussion.notes
+            .map((note) => normalizeDiscussionHistoryNote(mergeRequest, note))
+            .sort(
+              (left, right) =>
+                left.createdAt.localeCompare(right.createdAt) ||
+                left.noteId - right.noteId,
+            );
+          return discussion.notes
+            .filter((note) => !note.system)
+            .map((note) =>
+              normalizeComment(
+                mergeRequest,
+                discussion.id,
+                note,
+                discussionHistory,
+              ),
+            );
+        }),
+      )
+      .filter((comment) =>
+        matchesQuery(comment, query, createdAfter, createdBefore),
+      )
+      .sort(
+        (left, right) =>
+          right.createdAt.localeCompare(left.createdAt) ||
+          right.noteId - left.noteId,
+      );
     const items = comments.slice(offset, offset + query.limit);
     const nextOffset = offset + items.length;
 
@@ -200,22 +238,33 @@ function matchesQuery(
   if (!query.includeResolved && comment.resolved) return false;
   if (query.authorName) {
     const needle = query.authorName.trim().toLocaleLowerCase();
-    if (!comment.author.name.toLocaleLowerCase().includes(needle)
-      && !comment.author.username.toLocaleLowerCase().includes(needle)) return false;
+    if (
+      !comment.author.name.toLocaleLowerCase().includes(needle) &&
+      !comment.author.username.toLocaleLowerCase().includes(needle)
+    )
+      return false;
   }
-  const createdAt = dateFromFilter(comment.createdAt, `comment ${comment.noteId} createdAt`);
-  return (!createdAfter || createdAt >= createdAfter) && (!createdBefore || createdAt <= createdBefore);
+  const createdAt = dateFromFilter(
+    comment.createdAt,
+    `comment ${comment.noteId} createdAt`,
+  );
+  return (
+    (!createdAfter || createdAt >= createdAfter) &&
+    (!createdBefore || createdAt <= createdBefore)
+  );
 }
 
 function dateFromFilter(value: string, field: string): Date {
   const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new Error(`${field} must be a valid ISO-8601 date-time.`);
+  if (Number.isNaN(date.getTime()))
+    throw new Error(`${field} must be a valid ISO-8601 date-time.`);
   return date;
 }
 
 function parseCursor(cursor: string | undefined): number {
   if (!cursor) return 0;
-  if (!/^\d+$/.test(cursor)) throw new Error("cursor must be a non-negative integer string.");
+  if (!/^\d+$/.test(cursor))
+    throw new Error("cursor must be a non-negative integer string.");
   const offset = Number(cursor);
   if (!Number.isSafeInteger(offset)) throw new Error("cursor is too large.");
   return offset;
@@ -229,11 +278,13 @@ async function mapWithConcurrency<T, R>(
   const results: R[] = new Array(items.length);
   let nextIndex = 0;
   const workerCount = Math.min(Math.max(1, requestedConcurrency), items.length);
-  await Promise.all(Array.from({ length: workerCount }, async () => {
-    while (nextIndex < items.length) {
-      const index = nextIndex++;
-      results[index] = await mapper(items[index]);
-    }
-  }));
+  await Promise.all(
+    Array.from({ length: workerCount }, async () => {
+      while (nextIndex < items.length) {
+        const index = nextIndex++;
+        results[index] = await mapper(items[index]);
+      }
+    }),
+  );
   return results;
 }
