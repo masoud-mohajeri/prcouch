@@ -4,4 +4,4 @@ coverage/
 dist/
 .laminar-stack/
 data/
-reports/
+/reports/

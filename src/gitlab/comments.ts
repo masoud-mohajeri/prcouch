@@ -1,3 +1,5 @@
+import pMap from "p-map";
+
 import type {
   DiffPosition,
   GitLabClient,
@@ -103,15 +105,15 @@ export class CommentService {
         : mergeRequests.filter(
             (mergeRequest) => mergeRequest.state === query.state,
           );
-    const discussions = await mapWithConcurrency(
+    const discussions = await pMap(
       selectedMergeRequests,
-      this.discussionConcurrency,
       async (mergeRequest) => ({
         mergeRequest,
         discussions: await this.gitlab.listMergeRequestDiscussions(
           mergeRequest.iid,
         ),
       }),
+      { concurrency: this.discussionConcurrency },
     );
     const createdAfter = query.createdAfter
       ? dateFromFilter(query.createdAfter, "createdAfter")
@@ -268,23 +270,4 @@ function parseCursor(cursor: string | undefined): number {
   const offset = Number(cursor);
   if (!Number.isSafeInteger(offset)) throw new Error("cursor is too large.");
   return offset;
-}
-
-async function mapWithConcurrency<T, R>(
-  items: T[],
-  requestedConcurrency: number,
-  mapper: (item: T) => Promise<R>,
-): Promise<R[]> {
-  const results: R[] = new Array(items.length);
-  let nextIndex = 0;
-  const workerCount = Math.min(Math.max(1, requestedConcurrency), items.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      while (nextIndex < items.length) {
-        const index = nextIndex++;
-        results[index] = await mapper(items[index]);
-      }
-    }),
-  );
-  return results;
 }
