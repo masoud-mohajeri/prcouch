@@ -1,5 +1,5 @@
 import { generateText, stepCountIs } from "ai";
-import { openai } from "@ai-sdk/openai";
+import { createOpenAI } from "@ai-sdk/openai";
 
 import { TaskStore } from "./task-store.js";
 import { createGitLabTools, createTaskTools } from "./tools.js";
@@ -30,8 +30,11 @@ export async function runTaskAgent(
     throw new Error("Missing required configuration: OPENAI_API_KEY.");
   }
 
+  const baseURL = process.env.OPENAI_BASE_URL?.trim();
+  const provider = createOpenAI(baseURL ? { baseURL } : undefined);
+
   const result = await generateText({
-    model: openai(process.env.OPENAI_MODEL ?? "gpt-5-mini"),
+    model: provider(process.env.OPENAI_MODEL ?? "gpt-5-mini"),
     system: systemPrompt,
     prompt: input,
     tools: { ...createTaskTools(store), ...createGitLabTools(gitLabClient) },

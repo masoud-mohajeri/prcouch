@@ -20,7 +20,8 @@ if (!process.env.OPENAI_API_KEY?.trim()) {
   process.exit(1);
 }
 
-const client = new OpenAI();
+const baseURL = process.env.OPENAI_BASE_URL?.trim();
+const client = new OpenAI(baseURL ? { baseURL } : undefined);
 const store = new TaskStore();
 const gitlab = new GitLabClient(requireGitLabConfig());
 const comments = new CommentService(gitlab);

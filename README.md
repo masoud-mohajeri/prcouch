@@ -42,7 +42,8 @@ GITLAB_PROJECT=group/project
 ID. `GITLAB_URL` must be set explicitly, including when using GitLab.com.
 
 Set `OPENAI_MODEL` to a model available to your account; it defaults to
-`gpt-5-mini`.
+`gpt-5-mini`. Optionally, set `OPENAI_BASE_URL` to use an OpenAI-compatible
+API endpoint; it defaults to `https://api.openai.com/v1`.
 
 ## What the agent can do
 
@@ -103,6 +104,7 @@ credentials, these settings are available:
 | Setting | Purpose |
 | --- | --- |
 | `OPENAI_MODEL` | Overrides the default `gpt-5-mini` model. |
+| `OPENAI_BASE_URL` | Optional OpenAI-compatible API endpoint; defaults to `https://api.openai.com/v1`. |
 | `ANALYSIS_STORE_PATH` | Changes the local JSON analysis ledger path. |
 | `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy. |
 | `REPORT_OUTPUT_DIR` | Changes where HTML reports are written. |
