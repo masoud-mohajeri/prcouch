@@ -8,14 +8,21 @@
     "start": "tsx src/cli.ts",
     "openai-sdk": "tsx src/openai-sdk-agent.ts",
     "evals": "tsx evals/run.ts",
+    "evals:laminar": "tsx evals/laminar.ts",
+    "laminar:bootstrap": "bash scripts/laminar.sh bootstrap",
+    "laminar:up": "bash scripts/laminar.sh up",
+    "laminar:down": "bash scripts/laminar.sh down",
+    "laminar:logs": "bash scripts/laminar.sh logs",
+    "laminar:update": "bash scripts/laminar.sh update",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.12.0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^2.0.0",
+    "@lmnr-ai/lmnr": "^0.8.48",
     "ai": "^5.0.0",
     "dotenv": "^16.0.0",
     "openai": "^5.0.0",

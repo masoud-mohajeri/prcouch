@@ -46,10 +46,70 @@ The default model is `gpt-5-mini`; set `OPENAI_MODEL` in `.env` to a model avail
 
 ```bash
 npm test       # no API key or model calls
-npm run evals  # live model calls; checks tool choice, order, mock GitLab requests, and response content
+npm run evals  # local live evals; requires OPENAI_API_KEY only
 ```
 
-Add cases in `evals/cases.ts` as your product behavior grows. These evals are deliberately small: they test observable outcomes (which tool was called and the returned text), rather than brittle exact phrasing.
+The GitLab golden eval never calls a real GitLab instance. It injects a fixture
+client and verifies all of the following:
+
+- The agent lists recent merge requests before requesting discussions.
+- It fetches every expected discussion endpoint for the returned merge requests.
+- Its answer includes the review feedback returned by the fixture.
+
+The evals are structured for Laminar:
+
+- [cases.ts](evals/cases.ts) is a dataset of `data`, `target`, and `metadata`.
+- [executor.ts](evals/executor.ts) runs one data row and returns structured agent output.
+- [scorers.ts](evals/scorers.ts) exports named, deterministic 0-or-1 evaluators.
+
+### Self-hosted Laminar
+
+This project includes the Laminar TypeScript SDK and an `npm` wrapper around
+Laminar's official Docker Compose quickstart. It requires Node.js 22.12+ and
+Docker Desktop with Docker Compose v2.
+
+Start the local Laminar stack:
+
+```bash
+npm run laminar:up
+```
+
+The first command clones Laminar's official Compose files into the ignored
+`.laminar-stack/` directory and starts the containers. Once they are ready,
+open <http://localhost:5667>, create a project, and create a project API key.
+Then add it to `.env` along with your OpenAI key:
+
+```bash
+OPENAI_API_KEY=...
+LMNR_PROJECT_API_KEY=...
+LMNR_BASE_URL=http://localhost
+LMNR_HTTP_PORT=8000
+LMNR_GRPC_PORT=8001
+LMNR_FRONTEND_PORT=5667
+```
+
+Run the golden eval and send its traces and scores to your local Laminar project:
+
+```bash
+npm run evals:laminar
+```
+
+This uses the same `cases`, `executeEvalCase`, and `evaluators` as the local
+runner; it does not need a real GitLab token because the golden eval injects
+fixture data. Laminar receives the evaluation metadata and scores over HTTP on
+port 8000 and traces over gRPC on port 8001.
+
+Useful stack commands:
+
+```bash
+npm run laminar:logs    # follow container logs
+npm run laminar:down    # stop the stack but retain its data volumes
+npm run laminar:update  # fast-forward the cloned Laminar repository and restart
+```
+
+See [Laminar's self-hosted evaluation guide](https://laminar.sh/docs/evaluations/self-hosted)
+for the networking details and [its Docker Compose quickstart](https://github.com/lmnr-ai/lmnr#self-hosting-with-docker-compose)
+for the stack components.
 
 ## Production notes
 
