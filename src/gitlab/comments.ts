@@ -109,7 +109,7 @@ export class CommentService {
       selectedMergeRequests,
       async (mergeRequest) => ({
         mergeRequest,
-        discussions: await this.gitlab.listMergeRequestDiscussions(
+        discussions: await this.gitlab.listMergeRequestDiscussionDetails(
           mergeRequest.iid,
         ),
       }),

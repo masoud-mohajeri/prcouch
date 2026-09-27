@@ -50,7 +50,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({
       description:
-        "Get every GitLab discussion and every note in its reply history, including inline/diff comments, for one merge request. Pass the merge request IID returned by list_recent_merge_requests, not its database ID.",
+        "Get compact GitLab discussions for one merge request. Each discussion has line, comments (an array of message strings), and filePath; usernames in GITLAB_INVALID_COMMENT_USERS are excluded. Pass the merge request IID returned by list_recent_merge_requests, not its database ID.",
       inputSchema: z.object({
         mergeRequestIid: z
           .number()

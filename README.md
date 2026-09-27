@@ -53,6 +53,8 @@ The agent requires these settings at startup:
 OPENAI_API_KEY=...
 GITLAB_URL=https://gitlab.com
 GITLAB_TOKEN=...
+# Optional comma-separated GitLab usernames to exclude from discussion chats.
+GITLAB_INVALID_COMMENT_USERS=jenkinspusher,jenkinspuller
 ```
 
 At the start of every interactive session, the CLI lists the projects available
@@ -70,9 +72,12 @@ tool-call protocol. Set it explicitly to override that behavior.
 ## What the agent can do
 
 GitLab access is read-only. The agent can retrieve canonical project metadata,
-recent merge requests, their discussions, and normalized review comments. Each
-returned comment includes the complete discussion history (all notes and
-replies, including system events) in chronological order. It
+recent merge requests, compact human discussion summaries, and normalized
+review comments. Each discussion summary contains its file path, line, and
+message strings, excluding notes from usernames in
+`GITLAB_INVALID_COMMENT_USERS`.
+Each returned normalized comment includes the complete discussion history (all
+notes and replies, including system events) in chronological order. It
 can filter comments by author, merge request, state, creation date, and resolved
 status. Inline comments include file and line context and, where GitLab returns
 one, the diff commit SHA.

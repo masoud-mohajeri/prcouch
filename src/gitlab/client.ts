@@ -4,6 +4,8 @@ export type GitLabConfig = {
   baseUrl: string;
   token: string;
   project: string;
+  /** Usernames whose notes are excluded from compact discussions. */
+  invalidCommentUsers?: readonly string[];
 };
 
 /** Connection settings shared by project discovery and project-scoped calls. */
@@ -33,7 +35,8 @@ export type Project = {
   web_url: string;
 };
 
-export type Discussion = {
+/** Raw GitLab discussion data used by the detailed review-comment service. */
+export type DiscussionDetails = {
   id: string;
   individual_note: boolean;
   notes: Array<{
@@ -47,6 +50,16 @@ export type Discussion = {
     resolved: boolean;
     position?: DiffPosition;
   }>;
+};
+
+/** A compact representation of a discussion attached to a diff. */
+export type Discussion = {
+  /** The new-side line when available, otherwise the old-side line. */
+  line: number | null;
+  /** All non-excluded note bodies in the discussion, in GitLab's order. */
+  comments: string[];
+  /** The new-side path when available, otherwise the old-side path. */
+  filePath: string | null;
 };
 
 /** GitLab supplies this only for comments attached to a merge-request diff. */
@@ -92,6 +105,9 @@ export function requireGitLabConnectionConfig(
   return {
     baseUrl: baseUrl!.replace(/\/+$/, ""),
     token: token!,
+    invalidCommentUsers: parseInvalidCommentUsers(
+      env.GITLAB_INVALID_COMMENT_USERS,
+    ),
   };
 }
 
@@ -191,13 +207,30 @@ export class GitLabClient {
   async listMergeRequestDiscussions(
     mergeRequestIid: number,
   ): Promise<Discussion[]> {
-    const discussions: Discussion[] = [];
+    const discussions =
+      await this.listMergeRequestDiscussionDetails(mergeRequestIid);
+
+    return discussions
+      .map((discussion) =>
+        toDiscussion(discussion, this.config.invalidCommentUsers ?? []),
+      )
+      .filter((discussion): discussion is Discussion => discussion !== null);
+  }
+
+  /**
+   * Retrieve GitLab's complete discussion payload for consumers that need note
+   * metadata beyond the compact public discussion view.
+   */
+  async listMergeRequestDiscussionDetails(
+    mergeRequestIid: number,
+  ): Promise<DiscussionDetails[]> {
+    const discussions: DiscussionDetails[] = [];
     let page = 1;
 
     // GitLab paginates these results. A high bound prevents a malformed server
     // response from keeping an agent tool call open indefinitely.
     while (page <= 100) {
-      const { data, nextPage } = await this.getPage<Discussion[]>(
+      const { data, nextPage } = await this.getPage<DiscussionDetails[]>(
         `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}/discussions?per_page=100&page=${page}`,
         "array",
       );
@@ -297,6 +330,47 @@ export class GitLabClient {
       nextPage: response.headers.get("x-next-page"),
     };
   }
+}
+
+function toDiscussion(
+  discussion: DiscussionDetails,
+  invalidCommentUsers: readonly string[],
+): Discussion | null {
+  const notes = discussion.notes.filter(
+    (note) => !isInvalidCommentUser(note.author.username, invalidCommentUsers),
+  );
+  if (!notes.length) return null;
+
+  // The anchor normally lives on the first note, while replies commonly have
+  // no position. Keep looking so malformed/partial payloads still retain one.
+  const position = discussion.notes.find((note) => note.position)?.position;
+  return {
+    line: position?.new_line ?? position?.old_line ?? null,
+    comments: notes.map((note) => note.body),
+    filePath: position?.new_path ?? position?.old_path ?? null,
+  };
+}
+
+function isInvalidCommentUser(
+  username: string,
+  invalidCommentUsers: readonly string[],
+): boolean {
+  const normalizedUsername = username.trim().toLocaleLowerCase();
+  return invalidCommentUsers.some(
+    (invalidUser) => invalidUser.toLocaleLowerCase() === normalizedUsername,
+  );
+}
+
+function parseInvalidCommentUsers(value: string | undefined): string[] {
+  return [
+    ...new Set(
+      value
+        ?.split(",")
+        .map((username) => username.trim())
+        .filter(Boolean)
+        .map((username) => username.toLocaleLowerCase()) ?? [],
+    ),
+  ];
 }
 
 function getGitLabErrorKind(
