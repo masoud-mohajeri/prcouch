@@ -112,4 +112,41 @@ describe("runGitLabAgent chat history", () => {
     expect(result.text).toContain("Result: 1 merged merge request found.");
     expect(result.text).toContain("!77 — Fix the list");
   });
+
+  it("retrieves a named merge request instead of falling back to a recent list", async () => {
+    const client = new GitLabClient(
+      {
+        baseUrl: "https://gitlab.example.test",
+        token: "test-token",
+        project: "group/project",
+      },
+      async (url) => {
+        if (String(url).endsWith("/merge_requests/5896")) {
+          return new Response(
+            JSON.stringify({
+              iid: 5896,
+              title: "Resolve demo issues",
+              state: "opened",
+              web_url:
+                "https://gitlab.example.test/group/project/-/merge_requests/5896",
+              updated_at: "2026-09-27T10:00:00.000Z",
+              author: { name: "Ada Lovelace", username: "ada" },
+            }),
+          );
+        }
+        return new Response(
+          JSON.stringify({ path_with_namespace: "group/project" }),
+        );
+      },
+    );
+
+    const result = await runGitLabAgent("give me infos about this PR !5896", {
+      gitLabClient: client,
+    });
+
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(result.toolCalls).toEqual(["get_merge_request"]);
+    expect(result.text).toContain("Merge request: !5896 — Resolve demo issues");
+    expect(result.text).toContain("Author: Ada Lovelace (@ada)");
+  });
 });

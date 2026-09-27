@@ -39,6 +39,7 @@ describe("agent tools", () => {
     );
     expect(gitLabToolNames).toEqual({
       getProject: "get_project",
+      getMergeRequest: "get_merge_request",
       listRecentMergeRequests: "list_recent_merge_requests",
       getMergeRequestDiscussions: "get_merge_request_discussions",
       listComments: "list_comments",

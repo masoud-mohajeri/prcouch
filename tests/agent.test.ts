@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   getMergeRequestListRequest,
   getInitialToolForInput,
+  getNamedMergeRequestIid,
   isCategorizePendingCommentsRequest,
 } from "../src/agent/agent.js";
 
@@ -17,10 +18,12 @@ describe("getInitialToolForInput", () => {
       "list_recent_merge_requests",
     ],
     ["List unresolved review comments.", "list_comments"],
+    ["List unresolved review comments for PR !5896", "list_comments"],
     ["What is the configured project name?", "get_project"],
     ["Show comment categories.", "get_comment_categories"],
     ["Generate a report for security comments.", "generate_comment_report"],
     ["no filter", "list_recent_merge_requests"],
+    ["give me infos about this PR !5896", "get_merge_request"],
   ] as const)("selects %s", (input, expected) => {
     expect(getInitialToolForInput(input)).toBe(expected);
   });
@@ -52,5 +55,9 @@ describe("getInitialToolForInput", () => {
       limit: 10,
       state: "all",
     });
+    expect(
+      getMergeRequestListRequest("give me infos about PR !5896"),
+    ).toBeUndefined();
+    expect(getNamedMergeRequestIid("give me infos about PR !5896")).toBe(5896);
   });
 });

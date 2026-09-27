@@ -6,6 +6,7 @@ import { CommentService } from "../../gitlab/comments.js";
 
 export const gitLabToolNames = {
   getProject: "get_project",
+  getMergeRequest: "get_merge_request",
   listRecentMergeRequests: "list_recent_merge_requests",
   getMergeRequestDiscussions: "get_merge_request_discussions",
   listComments: "list_comments",
@@ -28,6 +29,22 @@ export function createGitLabTools(
       inputSchema: z.object({}),
       execute: async () => ({ project: await client.getProject() }),
     }),
+    [gitLabToolNames.getMergeRequest]: tool({
+      description:
+        "Get metadata for one GitLab merge request by its project-local IID. Use this when the user asks about a specific merge request such as !5896; do not list recent merge requests instead.",
+      inputSchema: z.object({
+        mergeRequestIid: z
+          .number()
+          .int()
+          .positive()
+          .describe(
+            "Project-local merge request IID, for example 5896 for !5896",
+          ),
+      }),
+      execute: async ({ mergeRequestIid }) => ({
+        mergeRequest: await client.getMergeRequest(mergeRequestIid),
+      }),
+    }),
     [gitLabToolNames.listRecentMergeRequests]: tool({
       description:
         "List the most recently updated GitLab merge requests in the configured project, optionally limited to one author's username. Use this before retrieving their comments.",
@@ -36,8 +53,8 @@ export function createGitLabTools(
           .number()
           .int()
           .min(1)
-          .max(100)
-          .default(10)
+          .max(200)
+          .default(1)
           .describe("Number of merge requests to return"),
         state: z
           .enum(["all", "opened", "closed", "merged"])

@@ -17,6 +17,7 @@ import type { ToolExecutionObserver } from "./tool-events.js";
 
 export const systemPrompt = `You are a concise GitLab review analysis assistant.
 Use tools to retrieve GitLab merge-request data; never claim GitLab data was retrieved unless the tool result confirms it.
+When a request names a merge request IID, such as !5896, use get_merge_request for its metadata. Do not substitute a list of recent merge requests. For comments on one named merge request, use list_comments with that mergeRequestIid.
 For a request for comments on recent merge requests, first list the requested number of merge requests, then retrieve discussions for each result. Pass authorUsername to list_recent_merge_requests when the request is limited to a merge-request author. GitLab calls pull requests "merge requests."
 For a bare follow-up such as "no filter", interpret it as listing the 10 most recently updated merge requests across all states with no author filter. When reporting merge-request results, state the selected project and the applied state from the tool result. Do not repeat an identical tool call in one response.
 For a request for the configured GitLab project's name or metadata, call get_project; do not infer a display name from configuration.
@@ -47,6 +48,7 @@ export type RunGitLabAgentOptions = {
 
 type InitialToolName =
   | "get_project"
+  | "get_merge_request"
   | "list_recent_merge_requests"
   | "list_comments"
   | "get_comment_categories"
@@ -68,6 +70,7 @@ export function getInitialToolForInput(
   input: string,
 ): InitialToolName | undefined {
   const query = input.toLowerCase();
+  const mergeRequestIid = getNamedMergeRequestIid(input);
   const mentionsMergeRequest = /\b(?:merge requests?|mrs?|prs?)\b/.test(query);
   const mentionsRecentMergeRequest =
     /\b(?:recent|latest|last)\b.*\b(?:merge requests?|mrs?|prs?)\b|\b(?:merge requests?|mrs?|prs?)\b.*\b(?:recent|latest|last)\b/.test(
@@ -92,6 +95,7 @@ export function getInitialToolForInput(
     )
   )
     return "get_project";
+  if (mergeRequestIid && !mentionsComments) return "get_merge_request";
   if (mentionsMergeRequest && (mentionsRecentMergeRequest || !mentionsComments))
     return "list_recent_merge_requests";
   if (mentionsComments) return "list_comments";
@@ -118,6 +122,7 @@ export function getMergeRequestListRequest(
   input: string,
 ): MergeRequestListRequest | undefined {
   const query = input.toLowerCase().trim();
+  if (getNamedMergeRequestIid(input)) return undefined;
   if (/^(?:no|without) filters?\.?$/.test(query)) {
     return { limit: 10, state: "all" };
   }
@@ -136,6 +141,12 @@ export function getMergeRequestListRequest(
         ? "closed"
         : "all";
   return { limit, state };
+}
+
+/** Returns the project-local IID in a user-supplied GitLab reference such as !5896. */
+export function getNamedMergeRequestIid(input: string): number | undefined {
+  const match = input.match(/(?:^|\s)!([1-9]\d*)\b/);
+  return match ? Number(match[1]) : undefined;
 }
 
 export async function runGitLabAgent(
@@ -168,6 +179,15 @@ export async function runGitLabAgent(
     return listMergeRequestsDirectly(
       client,
       mergeRequestListRequest,
+      onToolExecution,
+    );
+  }
+  const namedMergeRequestIid = getNamedMergeRequestIid(input);
+  if (namedMergeRequestIid && !/\b(?:review )?comments?\b/i.test(input)) {
+    const client = gitLabClient ?? new GitLabClient(requireGitLabConfig());
+    return getMergeRequestDirectly(
+      client,
+      namedMergeRequestIid,
       onToolExecution,
     );
   }
@@ -279,6 +299,41 @@ async function listMergeRequestsDirectly(
   }
 }
 
+async function getMergeRequestDirectly(
+  client: GitLabClient,
+  mergeRequestIid: number,
+  onToolExecution?: ToolExecutionObserver,
+): Promise<AgentResult> {
+  notifyToolExecution(onToolExecution, {
+    type: "started",
+    toolName: "get_merge_request",
+  });
+  try {
+    const [project, mergeRequest] = await Promise.all([
+      client.getProject(),
+      client.getMergeRequest(mergeRequestIid),
+    ]);
+    const result = { project, mergeRequest };
+    notifyToolExecution(onToolExecution, {
+      type: "finished",
+      toolName: "get_merge_request",
+      succeeded: true,
+    });
+    return {
+      text: formatMergeRequest(result),
+      toolCalls: ["get_merge_request"],
+      toolResults: [result],
+    };
+  } catch (error) {
+    notifyToolExecution(onToolExecution, {
+      type: "finished",
+      toolName: "get_merge_request",
+      succeeded: false,
+    });
+    throw error;
+  }
+}
+
 function formatMergeRequestList({
   project,
   query,
@@ -301,6 +356,26 @@ function formatMergeRequestList({
         `- !${mergeRequest.iid} — ${mergeRequest.title} (${mergeRequest.web_url})`,
     )
     .join("\n")}`;
+}
+
+function formatMergeRequest({
+  project,
+  mergeRequest,
+}: {
+  project: { path_with_namespace: string };
+  mergeRequest: {
+    iid: number;
+    title: string;
+    state: string;
+    web_url: string;
+    author: { name: string; username: string } | null;
+    updated_at: string;
+  };
+}): string {
+  const author = mergeRequest.author
+    ? `\nAuthor: ${mergeRequest.author.name} (@${mergeRequest.author.username})`
+    : "";
+  return `Project: ${project.path_with_namespace}\nMerge request: !${mergeRequest.iid} — ${mergeRequest.title}\nState: ${mergeRequest.state}${author}\nLast updated: ${mergeRequest.updated_at}\nURL: ${mergeRequest.web_url}`;
 }
 
 function notifyToolExecution(
