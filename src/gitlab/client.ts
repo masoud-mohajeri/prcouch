@@ -183,6 +183,7 @@ export class GitLabClient {
   async listRecentMergeRequests(
     limit: number,
     state: "all" | "opened" | "closed" | "merged" = "all",
+    authorUsername?: string,
   ): Promise<MergeRequest[]> {
     const params = new URLSearchParams({
       state,
@@ -190,6 +191,9 @@ export class GitLabClient {
       sort: "desc",
       per_page: String(limit),
     });
+    const normalizedAuthorUsername = authorUsername?.trim();
+    if (normalizedAuthorUsername)
+      params.set("author_username", normalizedAuthorUsername);
 
     return this.get<MergeRequest[]>(
       `/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`,

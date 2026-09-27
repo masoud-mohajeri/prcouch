@@ -30,7 +30,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listRecentMergeRequests]: tool({
       description:
-        "List the most recently updated GitLab merge requests in the configured project. Use this before retrieving their comments.",
+        "List the most recently updated GitLab merge requests in the configured project, optionally limited to one author's username. Use this before retrieving their comments.",
       inputSchema: z.object({
         limit: z
           .number()
@@ -43,9 +43,21 @@ export function createGitLabTools(
           .enum(["all", "opened", "closed", "merged"])
           .default("closed")
           .describe("Merge-request state to include"),
+        authorUsername: z
+          .string()
+          .trim()
+          .min(1)
+          .optional()
+          .describe(
+            "Optional exact GitLab username of the merge-request author",
+          ),
       }),
-      execute: async ({ limit, state }) => ({
-        mergeRequests: await client.listRecentMergeRequests(limit, state),
+      execute: async ({ limit, state, authorUsername }) => ({
+        mergeRequests: await client.listRecentMergeRequests(
+          limit,
+          state,
+          authorUsername,
+        ),
       }),
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({

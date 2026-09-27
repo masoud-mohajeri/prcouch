@@ -81,6 +81,21 @@ describe("GitLabClient", () => {
     );
   });
 
+  it("filters recent merge requests by author username", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify([{ iid: 12 }])));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(
+      client.listRecentMergeRequests(7, "opened", "  mira  "),
+    ).resolves.toEqual([{ iid: 12 }]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=7&author_username=mira",
+      expect.anything(),
+    );
+  });
+
   it("gets canonical project metadata using an encoded namespace path", async () => {
     const project = {
       id: 42,
