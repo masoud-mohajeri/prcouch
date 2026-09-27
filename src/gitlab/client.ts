@@ -1,3 +1,5 @@
+import { ServiceError } from "../errors.js";
+
 export type GitLabConfig = {
   baseUrl: string;
   token: string;
@@ -5,6 +7,9 @@ export type GitLabConfig = {
 };
 
 type Fetch = typeof fetch;
+type ExpectedBody = "array" | "object";
+
+const requestTimeoutMs = 30_000;
 
 export type MergeRequest = {
   id: number;
@@ -62,8 +67,23 @@ export function requireGitLabConfig(env = process.env): GitLabConfig {
     !project && "GITLAB_PROJECT",
   ].filter(Boolean);
   if (missing.length) {
-    throw new Error(
+    throw new ServiceError(
+      "gitlab",
+      "configuration",
       `Missing required GitLab configuration: ${missing.join(", ")}.`,
+    );
+  }
+
+  try {
+    const url = new URL(baseUrl!);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new Error("unsupported protocol");
+    }
+  } catch {
+    throw new ServiceError(
+      "gitlab",
+      "configuration",
+      "GITLAB_URL must be a valid http(s) URL.",
     );
   }
 
@@ -89,6 +109,7 @@ export class GitLabClient {
   async getProject(): Promise<Project> {
     return this.get<Project>(
       `/projects/${encodeURIComponent(this.config.project)}`,
+      "object",
     );
   }
 
@@ -105,12 +126,14 @@ export class GitLabClient {
 
     return this.get<MergeRequest[]>(
       `/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`,
+      "array",
     );
   }
 
   async getMergeRequest(mergeRequestIid: number): Promise<MergeRequest> {
     return this.get<MergeRequest>(
       `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}`,
+      "object",
     );
   }
 
@@ -125,53 +148,126 @@ export class GitLabClient {
     while (page <= 100) {
       const { data, nextPage } = await this.getPage<Discussion[]>(
         `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}/discussions?per_page=100&page=${page}`,
+        "array",
       );
       discussions.push(...data);
       if (!nextPage) return discussions;
-      page = Number(nextPage);
-      if (!Number.isInteger(page) || page < 1) {
-        throw new Error("GitLab returned an invalid pagination response.");
+      const nextPageNumber = Number(nextPage);
+      if (!Number.isInteger(nextPageNumber) || nextPageNumber <= page) {
+        throw new ServiceError(
+          "gitlab",
+          "incompatible-response",
+          "GitLab returned an invalid pagination response.",
+        );
       }
+      page = nextPageNumber;
     }
 
-    throw new Error(
+    throw new ServiceError(
+      "gitlab",
+      "incompatible-response",
       "GitLab returned more than 100 pages of discussions for this merge request.",
     );
   }
 
-  private async get<T>(path: string): Promise<T> {
-    return (await this.request<T>(path)).data;
+  private async get<T>(path: string, expectedBody: ExpectedBody): Promise<T> {
+    return (await this.request<T>(path, expectedBody)).data;
   }
 
   private async getPage<T>(
     path: string,
+    expectedBody: ExpectedBody,
   ): Promise<{ data: T; nextPage: string | null }> {
-    const response = await this.request<T>(path);
+    const response = await this.request<T>(path, expectedBody);
     return { data: response.data, nextPage: response.nextPage };
   }
 
   private async request<T>(
     path: string,
+    expectedBody: ExpectedBody,
   ): Promise<{ data: T; nextPage: string | null }> {
-    const response = await this.fetchImpl(
-      `${this.config.baseUrl}/api/v4${path}`,
-      {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(`${this.config.baseUrl}/api/v4${path}`, {
         headers: {
           "PRIVATE-TOKEN": this.config.token,
           Accept: "application/json",
         },
-      },
-    );
+        signal: AbortSignal.timeout(requestTimeoutMs),
+      });
+    } catch (cause) {
+      const timedOut = isTimeoutError(cause);
+      throw new ServiceError(
+        "gitlab",
+        timedOut ? "timeout" : "network",
+        timedOut ? "GitLab request timed out." : "Could not connect to GitLab.",
+        { cause },
+      );
+    }
 
     if (!response.ok) {
-      throw new Error(
+      throw new ServiceError(
+        "gitlab",
+        getGitLabErrorKind(response.status),
         `GitLab request failed (${response.status} ${response.statusText}).`,
+        {
+          statusCode: response.status,
+          requestId:
+            response.headers.get("x-request-id") ??
+            response.headers.get("x-gitlab-request-id") ??
+            undefined,
+          retryAfter: response.headers.get("retry-after") ?? undefined,
+        },
+      );
+    }
+
+    let data: unknown;
+    try {
+      data = await response.json();
+    } catch (cause) {
+      throw new ServiceError(
+        "gitlab",
+        "incompatible-response",
+        "GitLab returned an invalid JSON response.",
+        { cause },
+      );
+    }
+
+    if (!isExpectedBody(data, expectedBody)) {
+      throw new ServiceError(
+        "gitlab",
+        "incompatible-response",
+        `GitLab returned an unexpected ${expectedBody} response.`,
       );
     }
 
     return {
-      data: (await response.json()) as T,
+      data: data as T,
       nextPage: response.headers.get("x-next-page"),
     };
   }
+}
+
+function getGitLabErrorKind(
+  statusCode: number,
+): "authentication" | "not-found" | "rate-limit" | "server" | "request" {
+  if (statusCode === 401 || statusCode === 403) return "authentication";
+  if (statusCode === 404) return "not-found";
+  if (statusCode === 429) return "rate-limit";
+  if (statusCode >= 500) return "server";
+  return "request";
+}
+
+function isExpectedBody(value: unknown, expected: ExpectedBody): boolean {
+  return expected === "array"
+    ? Array.isArray(value)
+    : typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "TimeoutError") ||
+    (error instanceof Error &&
+      /(?:timeout|timed out|abort)/i.test(error.message))
+  );
 }

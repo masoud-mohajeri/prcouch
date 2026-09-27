@@ -30,4 +30,10 @@ describe("getOpenAIConfig", () => {
       'OPENAI_API_MODE must be either "responses" or "chat".',
     );
   });
+
+  it("rejects a malformed custom endpoint", () => {
+    expect(() => getOpenAIConfig({ OPENAI_BASE_URL: "not-a-url" })).toThrow(
+      "OPENAI_BASE_URL must be a valid http(s) URL",
+    );
+  });
 });

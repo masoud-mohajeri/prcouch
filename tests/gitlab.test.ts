@@ -18,6 +18,16 @@ describe("GitLabClient", () => {
     ).toThrow("GITLAB_URL");
   });
 
+  it("rejects a malformed GitLab URL before making a request", () => {
+    expect(() =>
+      requireGitLabConfig({
+        GITLAB_URL: "not-a-url",
+        GITLAB_TOKEN: "token",
+        GITLAB_PROJECT: "team/service",
+      }),
+    ).toThrow("GITLAB_URL must be a valid http(s) URL");
+  });
+
   it("lists the requested number of recently updated merge requests", async () => {
     const fetchMock = vi
       .fn()
@@ -89,6 +99,28 @@ describe("GitLabClient", () => {
     await expect(client.getProject()).rejects.toThrow(
       "GitLab request failed (403 Forbidden)",
     );
+  });
+
+  it("classifies unreachable GitLab as a network failure", async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error("fetch failed"));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(client.getProject()).rejects.toMatchObject({
+      service: "gitlab",
+      kind: "network",
+    });
+  });
+
+  it("rejects a successful but incompatible GitLab response", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify({ message: "nope" })));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(client.listRecentMergeRequests(1)).rejects.toMatchObject({
+      service: "gitlab",
+      kind: "incompatible-response",
+    });
   });
 
   it("follows GitLab pagination when retrieving discussions", async () => {

@@ -4,7 +4,9 @@ import { createOpenAI } from "@ai-sdk/openai";
 import { createAgentTools } from "./tools/index.js";
 import { compactChatHistory } from "./chat-history.js";
 import { GitLabClient } from "../gitlab/client.js";
+import { isServiceError, ServiceError } from "../errors.js";
 import { getOpenAIConfig } from "./openai-config.js";
+import { toOpenAIServiceError } from "./openai-error.js";
 import type { ToolExecutionObserver } from "./tool-events.js";
 
 export const systemPrompt = `You are a concise GitLab review analysis assistant.
@@ -85,7 +87,11 @@ export async function runGitLabAgent(
   { gitLabClient, onToolExecution, chatHistory }: RunGitLabAgentOptions = {},
 ): Promise<AgentResult> {
   if (!process.env.OPENAI_API_KEY?.trim()) {
-    throw new Error("Missing required configuration: OPENAI_API_KEY.");
+    throw new ServiceError(
+      "openai",
+      "configuration",
+      "Missing required configuration: OPENAI_API_KEY.",
+    );
   }
 
   const { baseURL, apiMode } = getOpenAIConfig();
@@ -94,6 +100,7 @@ export async function runGitLabAgent(
   const userMessage: ModelMessage = { role: "user", content: input };
   const retainedHistory = chatHistory && compactChatHistory(chatHistory);
 
+  const tools = createAgentTools({ client: gitLabClient, onToolExecution });
   const result = await generateText({
     // Many OpenAI-compatible endpoints implement Chat Completions but not the
     // Responses API's multi-turn item-reference protocol.
@@ -105,7 +112,7 @@ export async function runGitLabAgent(
     ...(retainedHistory
       ? { messages: [...retainedHistory, userMessage] }
       : { prompt: input }),
-    tools: createAgentTools({ client: gitLabClient, onToolExecution }),
+    tools,
     prepareStep: ({ stepNumber }) => {
       if (stepNumber === 0 && initialTool) {
         return { toolChoice: { type: "tool", toolName: initialTool } };
@@ -114,6 +121,11 @@ export async function runGitLabAgent(
     },
     // One list call plus up to 100 discussion calls for the largest allowed request.
     stopWhen: stepCountIs(105),
+  }).catch((error: unknown) => {
+    // A tool may surface its own GitLab integration error. Do not relabel it
+    // as an OpenAI failure merely because the agent loop was in progress.
+    if (isServiceError(error)) throw error;
+    throw toOpenAIServiceError(error, { baseURL, apiMode });
   });
 
   // The CLI owns this process-local array. Compact it after every completed
