@@ -368,10 +368,27 @@ export class AnalysisStore {
             `Unknown SQLite category "${assignment.categoryId}".`,
           );
 
-        this.db
-          .delete(commentAnalytics)
+        const comment = this.db
+          .select({ analysisStatus: comments.analysisStatus })
+          .from(comments)
+          .where(eq(comments.id, assignment.commentId))
+          .get();
+        if (!comment || comment.analysisStatus !== "pending") {
+          throw new Error(
+            `Comment ${assignment.commentId} is no longer pending and was left unchanged.`,
+          );
+        }
+        const existingAnalytics = this.db
+          .select({ id: commentAnalytics.id })
+          .from(commentAnalytics)
           .where(eq(commentAnalytics.commentId, assignment.commentId))
-          .run();
+          .get();
+        if (existingAnalytics) {
+          throw new Error(
+            `Comment ${assignment.commentId} already has an analysis and was left unchanged.`,
+          );
+        }
+
         this.db
           .insert(commentAnalytics)
           .values({
@@ -421,8 +438,23 @@ export class AnalysisStore {
       id: `${parsed.project.id}:${parsed.comment.noteId}`,
       analyzedAt,
     };
+    const existingComment = this.db
+      .select({ id: comments.id })
+      .from(comments)
+      .where(
+        and(
+          eq(comments.projectId, parsed.project.id),
+          eq(comments.noteId, parsed.comment.noteId),
+        ),
+      )
+      .get();
+    if (existingComment) {
+      throw new Error(
+        `Comment ${record.id} already exists; the existing row was left unchanged.`,
+      );
+    }
 
-    this.sqlite.transaction(() => {
+    const inserted = this.sqlite.transaction(() => {
       const now = analyzedAt;
       this.db
         .insert(projects)
@@ -520,7 +552,7 @@ export class AnalysisStore {
         analyzedBy: parsed.analyzedBy,
         model: parsed.model,
       });
-      this.db
+      const commentInsert = this.db
         .insert(comments)
         .values({
           projectId: parsed.project.id,
@@ -545,30 +577,9 @@ export class AnalysisStore {
           createdAt: now,
           updatedAt: now,
         })
-        .onConflictDoUpdate({
-          target: [comments.projectId, comments.noteId],
-          set: {
-            mergeRequestId,
-            discussionId,
-            body: parsed.comment.body,
-            sourceUrl: parsed.comment.sourceUrl,
-            authorName: parsed.comment.author.name,
-            authorUsername: parsed.comment.author.username,
-            commentCreatedAt: parsed.comment.createdAt,
-            oldPath: parsed.comment.location.oldPath,
-            newPath: parsed.comment.location.newPath,
-            oldLine: parsed.comment.location.oldLine,
-            newLine: parsed.comment.location.newLine,
-            commitSha: parsed.comment.commitSha,
-            analysisStatus: "completed",
-            analysisResultJson,
-            analyzedAt,
-            analysisError: null,
-            analysisVersion: "v1",
-            updatedAt: now,
-          },
-        })
+        .onConflictDoNothing()
         .run();
+      if (commentInsert.changes === 0) return false;
       const commentId = this.requireId(
         this.db
           .select({ id: comments.id })
@@ -619,11 +630,6 @@ export class AnalysisStore {
         "category",
       );
 
-      // The current public save API represents one analysis per comment.
-      this.db
-        .delete(commentAnalytics)
-        .where(eq(commentAnalytics.commentId, commentId))
-        .run();
       this.db
         .insert(commentAnalytics)
         .values({
@@ -638,8 +644,14 @@ export class AnalysisStore {
           updatedAt: now,
         })
         .run();
+      return true;
     })();
 
+    if (!inserted) {
+      throw new Error(
+        `Comment ${record.id} already exists; the existing row was left unchanged.`,
+      );
+    }
     return record;
   }
 

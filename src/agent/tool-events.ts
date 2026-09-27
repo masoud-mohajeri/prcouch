@@ -15,7 +15,7 @@ type ExecutableTool = {
 export function instrumentToolExecutions<
   TOOLS extends Record<string, ExecutableTool>,
 >(tools: TOOLS, onToolExecution?: ToolExecutionObserver): TOOLS {
-  if (!onToolExecution) return tools;
+  const executions = new Map<string, Promise<unknown>>();
 
   return Object.fromEntries(
     Object.entries(tools).map(([toolName, tool]) => {
@@ -27,21 +27,23 @@ export function instrumentToolExecutions<
         {
           ...tool,
           execute: async (...args: any[]) => {
-            notify(onToolExecution, { type: "started", toolName });
+            const cacheKey = `${toolName}:${JSON.stringify(args[0] ?? null)}`;
+            const existing = executions.get(cacheKey);
+            if (existing) return existing;
+
+            const execution = executeTool(
+              toolName,
+              execute,
+              args,
+              onToolExecution,
+            );
+            executions.set(cacheKey, execution);
             try {
-              const result = await execute(...args);
-              notify(onToolExecution, {
-                type: "finished",
-                toolName,
-                succeeded: true,
-              });
-              return result;
+              return await execution;
             } catch (error) {
-              notify(onToolExecution, {
-                type: "finished",
-                toolName,
-                succeeded: false,
-              });
+              // Retain successful output for this whole agent turn, but allow
+              // a failed operation to be retried if the model corrects itself.
+              executions.delete(cacheKey);
               throw error;
             }
           },
@@ -49,6 +51,32 @@ export function instrumentToolExecutions<
       ];
     }),
   ) as TOOLS;
+}
+
+async function executeTool(
+  toolName: string,
+  execute: (...args: any[]) => unknown,
+  args: any[],
+  onToolExecution?: ToolExecutionObserver,
+): Promise<unknown> {
+  if (!onToolExecution) return execute(...args);
+  notify(onToolExecution, { type: "started", toolName });
+  try {
+    const result = await execute(...args);
+    notify(onToolExecution, {
+      type: "finished",
+      toolName,
+      succeeded: true,
+    });
+    return result;
+  } catch (error) {
+    notify(onToolExecution, {
+      type: "finished",
+      toolName,
+      succeeded: false,
+    });
+    throw error;
+  }
 }
 
 function notify(

@@ -38,6 +38,23 @@ describe("tool activity reporter", () => {
     expect(execute).toHaveBeenCalledOnce();
   });
 
+  it("reuses an identical tool request within an agent turn", async () => {
+    const execute = vi.fn(async (_input: { limit: number }) => ({ value: 42 }));
+    const tools = instrumentToolExecutions({ list_comments: { execute } });
+
+    await expect(tools.list_comments.execute?.({ limit: 10 })).resolves.toEqual(
+      {
+        value: 42,
+      },
+    );
+    await expect(tools.list_comments.execute?.({ limit: 10 })).resolves.toEqual(
+      {
+        value: 42,
+      },
+    );
+    expect(execute).toHaveBeenCalledOnce();
+  });
+
   it("shows the active tool together with completed tool history", () => {
     const message = vi.fn();
     const reporter = createToolActivityReporter({ message });

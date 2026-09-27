@@ -111,7 +111,7 @@ describe("AnalysisStore", () => {
     expect(path).toMatch(/analytics\.sqlite$/);
   });
 
-  it("upserts immutable project/note keys and serializes concurrent writes", async () => {
+  it("preserves an existing project/note row and serializes distinct writes", async () => {
     const { store } = await createStore();
     const second = input({
       comment: {
@@ -123,14 +123,24 @@ describe("AnalysisStore", () => {
     });
 
     await Promise.all([store.upsert(input()), store.upsert(second)]);
-    await store.upsert(
-      input({ category: "security", resolution: "addressed" }),
-    );
+    await expect(
+      store.upsert(input({ category: "security", resolution: "addressed" })),
+    ).rejects.toThrow("Comment 7:45 already exists");
 
-    expect(await store.list()).toMatchObject([
-      { id: "7:45", category: "security", resolution: "addressed" },
-      { id: "7:46", category: "correctness", resolution: "open" },
-    ]);
+    expect(await store.list()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "7:45",
+          category: "correctness",
+          resolution: "open",
+        }),
+        expect.objectContaining({
+          id: "7:46",
+          category: "correctness",
+          resolution: "open",
+        }),
+      ]),
+    );
   });
 
   it("starts empty and rejects invalid analysis input", async () => {

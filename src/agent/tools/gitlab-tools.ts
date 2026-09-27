@@ -41,7 +41,7 @@ export function createGitLabTools(
           .describe("Number of merge requests to return"),
         state: z
           .enum(["all", "opened", "closed", "merged"])
-          .default("closed")
+          .default("all")
           .describe("Merge-request state to include"),
         authorUsername: z
           .string()
@@ -52,13 +52,21 @@ export function createGitLabTools(
             "Optional exact GitLab username of the merge-request author",
           ),
       }),
-      execute: async ({ limit, state, authorUsername }) => ({
-        mergeRequests: await client.listRecentMergeRequests(
-          limit,
-          state,
-          authorUsername,
-        ),
-      }),
+      execute: async ({ limit, state, authorUsername }) => {
+        const [project, mergeRequests] = await Promise.all([
+          client.getProject(),
+          client.listRecentMergeRequests(limit, state, authorUsername),
+        ]);
+        return {
+          project,
+          query: {
+            limit,
+            state,
+            authorUsername: authorUsername ?? null,
+          },
+          mergeRequests,
+        };
+      },
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({
       description:

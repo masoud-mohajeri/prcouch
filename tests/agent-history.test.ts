@@ -74,4 +74,42 @@ describe("runGitLabAgent chat history", () => {
       secondResponse,
     ]);
   });
+
+  it("formats simple merge-request lists from verified GitLab data without generating text", async () => {
+    const client = new GitLabClient(
+      {
+        baseUrl: "https://gitlab.example.test",
+        token: "test-token",
+        project: "group/project",
+      },
+      async (url) => {
+        if (String(url).includes("/merge_requests?")) {
+          return new Response(
+            JSON.stringify([
+              {
+                iid: 77,
+                title: "Fix the list",
+                state: "merged",
+                web_url:
+                  "https://gitlab.example.test/group/project/-/merge_requests/77",
+              },
+            ]),
+          );
+        }
+        return new Response(
+          JSON.stringify({ path_with_namespace: "group/project" }),
+        );
+      },
+    );
+
+    const result = await runGitLabAgent("give me list of last merged PRs", {
+      gitLabClient: client,
+    });
+
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(result.toolCalls).toEqual(["list_recent_merge_requests"]);
+    expect(result.text).toContain("Project: group/project");
+    expect(result.text).toContain("Result: 1 merged merge request found.");
+    expect(result.text).toContain("!77 — Fix the list");
+  });
 });

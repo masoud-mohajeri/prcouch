@@ -9,7 +9,7 @@ import {
 } from "../analysis/categorization.js";
 import { CommentCategoryPolicy } from "../analysis/category-policy.js";
 import { AnalysisStore } from "../analysis/store.js";
-import { GitLabClient } from "../gitlab/client.js";
+import { GitLabClient, requireGitLabConfig } from "../gitlab/client.js";
 import { isServiceError, ServiceError } from "../errors.js";
 import { getOpenAIConfig } from "./openai-config.js";
 import { toOpenAIServiceError } from "./openai-error.js";
@@ -18,6 +18,7 @@ import type { ToolExecutionObserver } from "./tool-events.js";
 export const systemPrompt = `You are a concise GitLab review analysis assistant.
 Use tools to retrieve GitLab merge-request data; never claim GitLab data was retrieved unless the tool result confirms it.
 For a request for comments on recent merge requests, first list the requested number of merge requests, then retrieve discussions for each result. Pass authorUsername to list_recent_merge_requests when the request is limited to a merge-request author. GitLab calls pull requests "merge requests."
+For a bare follow-up such as "no filter", interpret it as listing the 10 most recently updated merge requests across all states with no author filter. When reporting merge-request results, state the selected project and the applied state from the tool result. Do not repeat an identical tool call in one response.
 For a request for the configured GitLab project's name or metadata, call get_project; do not infer a display name from configuration.
 Use list_comments for filtered review-comment requests; it returns author, merge request, inline location, commit SHA context, and the complete note/reply history for each discussion. Use get_merge_request_discussions when only the line, path, and human message text for each discussion are needed.
 Before save_analyzed_comment, call get_comment_categories and select one approved category, a permitted resolution, and a short evidence-based rationale.
@@ -51,6 +52,11 @@ type InitialToolName =
   | "get_comment_categories"
   | "generate_comment_report";
 
+type MergeRequestListRequest = {
+  limit: number;
+  state: "all" | "opened" | "closed" | "merged";
+};
+
 /**
  * Start unambiguous data requests with their relevant tool. This prevents a
  * model from asking for values that the tool schemas already default, and also
@@ -68,6 +74,9 @@ export function getInitialToolForInput(
       query,
     );
   const mentionsComments = /\b(?:review )?comments?\b/.test(query);
+
+  if (/^(?:no|without) filters?\.?$/.test(query.trim()))
+    return "list_recent_merge_requests";
 
   if (
     /\b(?:generate|create|build|show)\b.*\breport\b|\breport\b.*\b(?:comments?|analys)/.test(
@@ -100,6 +109,35 @@ export function isCategorizePendingCommentsRequest(input: string): boolean {
   );
 }
 
+/**
+ * Handles simple MR-list requests without asking a model to count or repeat
+ * data that GitLab already returned. Comment requests remain agent-driven
+ * because they need additional discussion calls.
+ */
+export function getMergeRequestListRequest(
+  input: string,
+): MergeRequestListRequest | undefined {
+  const query = input.toLowerCase().trim();
+  if (/^(?:no|without) filters?\.?$/.test(query)) {
+    return { limit: 10, state: "all" };
+  }
+  if (/\b(?:review )?comments?\b/.test(query)) return undefined;
+  if (!/\b(?:merge requests?|mrs?|prs?)\b/.test(query)) return undefined;
+
+  const requestedLimit = query.match(/\b(?:last|latest|recent)\s+(\d+)\b/);
+  const limit = requestedLimit
+    ? Math.min(Math.max(Number(requestedLimit[1]), 1), 100)
+    : 10;
+  const state = /\bmerged\b/.test(query)
+    ? "merged"
+    : /\bopen(?:ed)?\b/.test(query)
+      ? "opened"
+      : /\bclosed?\b/.test(query)
+        ? "closed"
+        : "all";
+  return { limit, state };
+}
+
 export async function runGitLabAgent(
   input: string,
   {
@@ -124,6 +162,15 @@ export async function runGitLabAgent(
     apiMode === "chat"
       ? provider.chat(modelName)
       : provider.responses(modelName);
+  const mergeRequestListRequest = getMergeRequestListRequest(input);
+  if (mergeRequestListRequest) {
+    const client = gitLabClient ?? new GitLabClient(requireGitLabConfig());
+    return listMergeRequestsDirectly(
+      client,
+      mergeRequestListRequest,
+      onToolExecution,
+    );
+  }
   if (isCategorizePendingCommentsRequest(input)) {
     const store = new AnalysisStore();
     try {
@@ -183,9 +230,7 @@ export async function runGitLabAgent(
     );
   }
 
-  const toolCalls = result.steps.flatMap((step) =>
-    step.toolCalls.map((call) => call.toolName),
-  );
+  const toolCalls = uniqueToolCalls(result.steps);
   const toolResults = result.steps.flatMap((step) => step.toolResults);
 
   return {
@@ -193,6 +238,96 @@ export async function runGitLabAgent(
     toolCalls,
     toolResults,
   };
+}
+
+async function listMergeRequestsDirectly(
+  client: GitLabClient,
+  request: MergeRequestListRequest,
+  onToolExecution?: ToolExecutionObserver,
+): Promise<AgentResult> {
+  notifyToolExecution(onToolExecution, {
+    type: "started",
+    toolName: "list_recent_merge_requests",
+  });
+  try {
+    const [project, mergeRequests] = await Promise.all([
+      client.getProject(),
+      client.listRecentMergeRequests(request.limit, request.state),
+    ]);
+    const result = {
+      project,
+      query: { ...request, authorUsername: null },
+      mergeRequests,
+    };
+    notifyToolExecution(onToolExecution, {
+      type: "finished",
+      toolName: "list_recent_merge_requests",
+      succeeded: true,
+    });
+    return {
+      text: formatMergeRequestList(result),
+      toolCalls: ["list_recent_merge_requests"],
+      toolResults: [result],
+    };
+  } catch (error) {
+    notifyToolExecution(onToolExecution, {
+      type: "finished",
+      toolName: "list_recent_merge_requests",
+      succeeded: false,
+    });
+    throw error;
+  }
+}
+
+function formatMergeRequestList({
+  project,
+  query,
+  mergeRequests,
+}: {
+  project: { path_with_namespace: string };
+  query: MergeRequestListRequest & { authorUsername: null };
+  mergeRequests: Array<{
+    iid: number;
+    title: string;
+    state: string;
+    web_url: string;
+  }>;
+}): string {
+  const heading = `Project: ${project.path_with_namespace}\nApplied state: ${query.state}\nResult: ${mergeRequests.length} ${query.state} merge request${mergeRequests.length === 1 ? "" : "s"} found.`;
+  if (!mergeRequests.length) return heading;
+  return `${heading}\n\n${mergeRequests
+    .map(
+      (mergeRequest) =>
+        `- !${mergeRequest.iid} — ${mergeRequest.title} (${mergeRequest.web_url})`,
+    )
+    .join("\n")}`;
+}
+
+function notifyToolExecution(
+  observer: ToolExecutionObserver | undefined,
+  event: Parameters<ToolExecutionObserver>[0],
+): void {
+  try {
+    observer?.(event);
+  } catch {
+    // Terminal activity rendering must not interrupt GitLab retrieval.
+  }
+}
+
+function uniqueToolCalls(
+  steps: Array<{ toolCalls: Array<{ toolName: string; input: unknown }> }>,
+): string[] {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const step of steps) {
+    for (const call of step.toolCalls) {
+      const key = `${call.toolName}:${JSON.stringify(call.input)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      names.push(call.toolName);
+    }
+  }
+  return names;
 }
 
 function formatCategorizationResult({
