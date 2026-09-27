@@ -31,7 +31,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.getMergeRequest]: tool({
       description:
-        "Get metadata for one GitLab merge request by its project-local IID. Use this when the user asks about a specific merge request such as !5896; do not list recent merge requests instead.",
+        "Retrieve metadata for one GitLab merge request by its project-local IID. Use this when the user names a specific merge request such as !5896.",
       inputSchema: z.object({
         mergeRequestIid: z
           .number()
@@ -87,7 +87,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({
       description:
-        "Get compact GitLab discussions for one merge request. Each discussion has line, comments (an array of message strings), and filePath; usernames in GITLAB_INVALID_COMMENT_USERS are excluded. Pass the merge request IID returned by list_recent_merge_requests, not its database ID.",
+        "Retrieve compact human discussion summaries for one GitLab merge request. Use this after listing recent merge requests when the user needs each discussion's file path, line, and message text. Pass the project-local IID returned by list_recent_merge_requests, not its database ID. Usernames in GITLAB_INVALID_COMMENT_USERS are excluded.",
       inputSchema: z.object({
         mergeRequestIid: z
           .number()
@@ -101,7 +101,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listComments]: tool({
       description:
-        "List normalized human GitLab merge-request comments, including inline discussion notes and general MR notes. Each item includes discussionHistory with every note and reply in that discussion, ordered oldest to newest, including system events. Filter authorName case-insensitively by substring against the item's author name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
+        "Retrieve normalized GitLab review discussions and comments, including inline and general merge-request notes. For a specific merge request, pass mergeRequestIid. Use this for filtered review-comment requests: each item includes its author, merge request, inline location, commit-SHA context, and full oldest-to-newest note/reply history, including system events. Filter authorName case-insensitively by substring against the author name or username. A commitSha is a diff SHA, not a commit message.",
       inputSchema: z
         .object({
           authorName: z
