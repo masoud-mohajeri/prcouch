@@ -8,15 +8,15 @@ GitLab fetch → save PRs/comments → batch LLM analysis → save analytics →
 
 ## SQLite tables
 
-| Table | Key data |
-| --- | --- |
-| `merge_requests` | PR metadata, author, state, and timestamps |
-| `discussions` | PR link, relative file path, line, and resolved state |
-| `comments` | Comment body, author, timestamps, and nullable analysis fields |
-| `issue_categories` | Defined issue categories and their recommended solutions |
-| `comment_analytics` | Validated LLM analysis for each comment/category |
-| `analysis_batches` | Batch status, model, prompt version, retries, and timing |
-| `sync_runs` | GitLab import progress and errors |
+| Table               | Key data                                                       |
+| ------------------- | -------------------------------------------------------------- |
+| `merge_requests`    | PR metadata, author, state, and timestamps                     |
+| `discussions`       | PR link, relative file path, line, and resolved state          |
+| `comments`          | Comment body, author, timestamps, and nullable analysis fields |
+| `issue_categories`  | Defined issue categories and their recommended solutions       |
+| `comment_analytics` | Validated LLM analysis for each comment/category               |
+| `analysis_batches`  | Batch status, model, prompt version, retries, and timing       |
+| `sync_runs`         | GitLab import progress and errors                              |
 
 ## Comment analysis fields
 

@@ -16,6 +16,7 @@ import {
   requireGitLabConnectionConfig,
 } from "../gitlab/client.js";
 import { formatCliError } from "./error.js";
+import { createCategorizationProgressReporter } from "./categorization-progress.js";
 import { createToolActivityReporter } from "./tool-activity.js";
 
 export type ChatSessionOptions = {
@@ -72,6 +73,9 @@ async function runTurn(
       chatHistory,
       onToolExecution: activity
         ? createToolActivityReporter(activity)
+        : undefined,
+      onCategorizationProgress: activity
+        ? createCategorizationProgressReporter(activity)
         : undefined,
     });
     activity?.stop("Request complete");

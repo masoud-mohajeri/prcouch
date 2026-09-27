@@ -8,6 +8,7 @@ import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { z } from "zod";
 
 import {
+  analysisBatches,
   commentAnalytics,
   comments,
   discussions,
@@ -16,6 +17,33 @@ import {
   projects,
 } from "../db/schema.js";
 import type { CommentCategory } from "./category-policy.js";
+
+export type PendingComment = {
+  id: number;
+  body: string;
+  author: { name: string; username: string };
+  mergeRequest: { iid: number; title: string };
+  location: {
+    oldPath: string | null;
+    newPath: string | null;
+    oldLine: number | null;
+    newLine: number | null;
+  };
+};
+
+export type StoredCommentCategory = {
+  id: number;
+  code: string;
+  name: string;
+  description: string;
+  recommendedSolution: string;
+  defaultResolution: z.infer<typeof resolutionSchema>;
+};
+
+export type CategoryAssignment = {
+  commentId: number;
+  categoryId: string;
+};
 
 export const resolutionSchema = z.enum([
   "open",
@@ -177,6 +205,209 @@ export class AnalysisStore {
         analyzedAt: row.analyzedAt,
       }),
     );
+  }
+
+  /** Synchronizes the committed policy into SQLite before batch classification. */
+  async syncCategories(categories: CommentCategory[]): Promise<void> {
+    const now = new Date().toISOString();
+    this.sqlite.transaction(() => {
+      // Keep the model-visible SQLite catalog identical to the current policy.
+      // Historical analytics retain their category rows, but no longer offer
+      // removed categories for new assignments.
+      this.db
+        .update(issueCategories)
+        .set({ active: false, updatedAt: now })
+        .run();
+      for (const category of categories) {
+        this.db
+          .insert(issueCategories)
+          .values({
+            code: category.id,
+            name: category.label,
+            description: category.description,
+            recommendedSolution: category.action,
+            defaultResolution: category.defaultResolution,
+            active: true,
+            version: 1,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: issueCategories.code,
+            set: {
+              name: category.label,
+              description: category.description,
+              recommendedSolution: category.action,
+              defaultResolution: category.defaultResolution,
+              active: true,
+              updatedAt: now,
+            },
+          })
+          .run();
+      }
+    })();
+  }
+
+  async listStoredCategories(): Promise<StoredCommentCategory[]> {
+    return this.db
+      .select({
+        id: issueCategories.id,
+        code: issueCategories.code,
+        name: issueCategories.name,
+        description: issueCategories.description,
+        recommendedSolution: issueCategories.recommendedSolution,
+        defaultResolution: issueCategories.defaultResolution,
+      })
+      .from(issueCategories)
+      .where(eq(issueCategories.active, true))
+      .orderBy(issueCategories.code)
+      .all()
+      .map((category) => ({
+        ...category,
+        defaultResolution: resolutionSchema.parse(category.defaultResolution),
+      }));
+  }
+
+  async listPendingComments(limit = 10): Promise<PendingComment[]> {
+    return this.db
+      .select({
+        id: comments.id,
+        body: comments.body,
+        authorName: comments.authorName,
+        authorUsername: comments.authorUsername,
+        mergeRequestIid: mergeRequests.iid,
+        mergeRequestTitle: mergeRequests.title,
+        oldPath: comments.oldPath,
+        newPath: comments.newPath,
+        oldLine: comments.oldLine,
+        newLine: comments.newLine,
+      })
+      .from(comments)
+      .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
+      .where(eq(comments.analysisStatus, "pending"))
+      .orderBy(desc(comments.commentCreatedAt), desc(comments.id))
+      .limit(limit)
+      .all()
+      .map((comment) => ({
+        id: comment.id,
+        body: comment.body,
+        author: { name: comment.authorName, username: comment.authorUsername },
+        mergeRequest: {
+          iid: comment.mergeRequestIid,
+          title: comment.mergeRequestTitle,
+        },
+        location: {
+          oldPath: comment.oldPath,
+          newPath: comment.newPath,
+          oldLine: comment.oldLine,
+          newLine: comment.newLine,
+        },
+      }));
+  }
+
+  async countPendingComments(): Promise<number> {
+    const result = this.sqlite
+      .prepare(
+        "SELECT COUNT(*) AS count FROM comments WHERE analysis_status = 'pending'",
+      )
+      .get() as { count: number } | undefined;
+    return result?.count ?? 0;
+  }
+
+  async createAnalysisBatch(model: string): Promise<number> {
+    const now = new Date().toISOString();
+    const result = this.db
+      .insert(analysisBatches)
+      .values({
+        status: "running",
+        model,
+        promptVersion: "batch-v1",
+        categoryPolicyVersion: "1",
+        startedAt: now,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .run();
+    return Number(result.lastInsertRowid);
+  }
+
+  async failAnalysisBatch(
+    batchId: number,
+    error: string,
+    retryCount: number,
+  ): Promise<void> {
+    const now = new Date().toISOString();
+    this.db
+      .update(analysisBatches)
+      .set({
+        status: "failed",
+        error,
+        retryCount,
+        completedAt: now,
+        updatedAt: now,
+      })
+      .where(eq(analysisBatches.id, batchId))
+      .run();
+  }
+
+  async completeCategorizationBatch(
+    batchId: number,
+    assignments: CategoryAssignment[],
+    categories: StoredCommentCategory[],
+    model: string,
+  ): Promise<void> {
+    const categoryByCode = new Map(
+      categories.map((category) => [category.code, category]),
+    );
+    const now = new Date().toISOString();
+    this.sqlite.transaction(() => {
+      for (const assignment of assignments) {
+        const category = categoryByCode.get(assignment.categoryId);
+        if (!category)
+          throw new Error(
+            `Unknown SQLite category "${assignment.categoryId}".`,
+          );
+
+        this.db
+          .delete(commentAnalytics)
+          .where(eq(commentAnalytics.commentId, assignment.commentId))
+          .run();
+        this.db
+          .insert(commentAnalytics)
+          .values({
+            commentId: assignment.commentId,
+            categoryId: category.id,
+            resolution: category.defaultResolution,
+            solution: category.recommendedSolution,
+            batchId,
+            analyzedBy: "batch-categorizer",
+            model,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .run();
+        this.db
+          .update(comments)
+          .set({
+            analysisStatus: "completed",
+            analysisResultJson: JSON.stringify({
+              category: category.code,
+              resolution: category.defaultResolution,
+            }),
+            analyzedAt: now,
+            analysisError: null,
+            analysisVersion: "batch-v1",
+            updatedAt: now,
+          })
+          .where(eq(comments.id, assignment.commentId))
+          .run();
+      }
+      this.db
+        .update(analysisBatches)
+        .set({ status: "completed", completedAt: now, updatedAt: now })
+        .where(eq(analysisBatches.id, batchId))
+        .run();
+    })();
   }
 
   async upsert(
@@ -358,6 +589,7 @@ export class AnalysisStore {
             name: category.label,
             description: category.description,
             recommendedSolution: category.action,
+            defaultResolution: category.defaultResolution,
             active: true,
             version: 1,
           }
@@ -366,6 +598,7 @@ export class AnalysisStore {
             name: parsed.category,
             description: "",
             recommendedSolution: "",
+            defaultResolution: "open" as const,
             active: true,
             version: 1,
           };

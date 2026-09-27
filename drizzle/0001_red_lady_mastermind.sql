@@ -1,0 +1,1 @@
+ALTER TABLE `issue_categories` ADD `default_resolution` text DEFAULT 'open' NOT NULL;

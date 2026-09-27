@@ -3,6 +3,12 @@ import { createOpenAI } from "@ai-sdk/openai";
 
 import { createAgentTools } from "./tools/index.js";
 import { compactChatHistory } from "./chat-history.js";
+import {
+  PendingCommentCategorizer,
+  type CategorizationProgressEvent,
+} from "../analysis/categorization.js";
+import { CommentCategoryPolicy } from "../analysis/category-policy.js";
+import { AnalysisStore } from "../analysis/store.js";
 import { GitLabClient } from "../gitlab/client.js";
 import { isServiceError, ServiceError } from "../errors.js";
 import { getOpenAIConfig } from "./openai-config.js";
@@ -34,6 +40,8 @@ export type RunGitLabAgentOptions = {
    * completed turn is compacted and retained in this array in memory.
    */
   chatHistory?: ModelMessage[];
+  /** Receives persisted-comment progress for the direct batch categorizer. */
+  onCategorizationProgress?: (event: CategorizationProgressEvent) => void;
 };
 
 type InitialToolName =
@@ -82,9 +90,24 @@ export function getInitialToolForInput(
   return undefined;
 }
 
+/** Matches the explicit natural-language command for SQLite batch analysis. */
+export function isCategorizePendingCommentsRequest(input: string): boolean {
+  const query = input.toLowerCase();
+  return (
+    /\bcategoriz(?:e|ing)\b/.test(query) &&
+    /\b(?:pending )?(?:review )?comments?\b/.test(query) &&
+    !/\b(?:show|list|what are|which)\b.*\bcategor/.test(query)
+  );
+}
+
 export async function runGitLabAgent(
   input: string,
-  { gitLabClient, onToolExecution, chatHistory }: RunGitLabAgentOptions = {},
+  {
+    gitLabClient,
+    onToolExecution,
+    chatHistory,
+    onCategorizationProgress,
+  }: RunGitLabAgentOptions = {},
 ): Promise<AgentResult> {
   if (!process.env.OPENAI_API_KEY?.trim()) {
     throw new ServiceError(
@@ -96,6 +119,30 @@ export async function runGitLabAgent(
 
   const { baseURL, apiMode } = getOpenAIConfig();
   const provider = createOpenAI(baseURL ? { baseURL } : undefined);
+  const modelName = process.env.OPENAI_MODEL ?? "gpt-5-mini";
+  const model =
+    apiMode === "chat"
+      ? provider.chat(modelName)
+      : provider.responses(modelName);
+  if (isCategorizePendingCommentsRequest(input)) {
+    const store = new AnalysisStore();
+    try {
+      const result = await new PendingCommentCategorizer(
+        store,
+        new CommentCategoryPolicy(),
+      ).categorize({ model, modelName, onProgress: onCategorizationProgress });
+      return {
+        text: formatCategorizationResult(result),
+        toolCalls: [],
+        toolResults: [result],
+      };
+    } catch (error) {
+      if (isServiceError(error)) throw error;
+      throw toOpenAIServiceError(error, { baseURL, apiMode });
+    } finally {
+      store.close();
+    }
+  }
   const initialTool = getInitialToolForInput(input);
   const userMessage: ModelMessage = { role: "user", content: input };
   const retainedHistory = chatHistory && compactChatHistory(chatHistory);
@@ -104,10 +151,7 @@ export async function runGitLabAgent(
   const result = await generateText({
     // Many OpenAI-compatible endpoints implement Chat Completions but not the
     // Responses API's multi-turn item-reference protocol.
-    model:
-      apiMode === "chat"
-        ? provider.chat(process.env.OPENAI_MODEL ?? "gpt-5-mini")
-        : provider.responses(process.env.OPENAI_MODEL ?? "gpt-5-mini"),
+    model,
     system: systemPrompt,
     ...(retainedHistory
       ? { messages: [...retainedHistory, userMessage] }
@@ -149,4 +193,20 @@ export async function runGitLabAgent(
     toolCalls,
     toolResults,
   };
+}
+
+function formatCategorizationResult({
+  processed,
+  remaining,
+  categoryCounts,
+}: {
+  processed: number;
+  remaining: number;
+  categoryCounts: Record<string, number>;
+}): string {
+  if (!processed) return "No pending comments are available to categorize.";
+  const categories = Object.entries(categoryCounts)
+    .map(([category, count]) => `${category}: ${count}`)
+    .join(", ");
+  return `Categorized ${processed} pending comment${processed === 1 ? "" : "s"}. Categories: ${categories}. Remaining pending: ${remaining}.`;
 }

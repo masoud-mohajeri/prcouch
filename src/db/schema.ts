@@ -109,6 +109,7 @@ export const issueCategories = sqliteTable("issue_categories", {
   name: text("name").notNull(),
   description: text("description").notNull(),
   recommendedSolution: text("recommended_solution").notNull(),
+  defaultResolution: text("default_resolution").notNull().default("open"),
   active: integer("active", { mode: "boolean" }).notNull().default(true),
   version: integer("version").notNull().default(1),
   createdAt: text("created_at").notNull(),

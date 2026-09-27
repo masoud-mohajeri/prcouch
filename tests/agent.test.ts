@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { getInitialToolForInput } from "../src/agent/agent.js";
+import {
+  getInitialToolForInput,
+  isCategorizePendingCommentsRequest,
+} from "../src/agent/agent.js";
 
 describe("getInitialToolForInput", () => {
   it.each([
@@ -24,5 +27,14 @@ describe("getInitialToolForInput", () => {
     expect(
       getInitialToolForInput("Can you help me plan my week?"),
     ).toBeUndefined();
+  });
+
+  it("recognizes explicit pending-comment categorization requests", () => {
+    expect(
+      isCategorizePendingCommentsRequest("Categorize pending comments"),
+    ).toBe(true);
+    expect(isCategorizePendingCommentsRequest("Show comment categories")).toBe(
+      false,
+    );
   });
 });
