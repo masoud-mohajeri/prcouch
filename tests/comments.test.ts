@@ -221,10 +221,15 @@ describe("CommentService", () => {
     );
 
     expect(page.items.map((item) => item.noteId)).toEqual([2]);
-    expect(fetchMock).toHaveBeenCalledWith(
-      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/10",
-      expect.anything(),
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(
+      expect.arrayContaining([
+        "https://gitlab.example.test/api/v4/projects/team%2Fservice",
+        "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/10",
+        "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/10/discussions?per_page=100&page=1",
+        "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/10/notes?per_page=100&page=1",
+      ]),
     );
+    expect(fetchMock).toHaveBeenCalledTimes(4);
   });
 
   it("includes general merge-request notes when no discussions exist", async () => {

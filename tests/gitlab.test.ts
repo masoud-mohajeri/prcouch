@@ -96,6 +96,22 @@ describe("GitLabClient", () => {
     );
   });
 
+  it("gets one merge request by its project-local IID", async () => {
+    const mergeRequest = { iid: 12, title: "Fix invoice validation" };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(new Response(JSON.stringify(mergeRequest)));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(client.getMergeRequest(12)).resolves.toEqual(mergeRequest);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/12",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "PRIVATE-TOKEN": "secret" }),
+      }),
+    );
+  });
+
   it("gets canonical project metadata using an encoded namespace path", async () => {
     const project = {
       id: 42,
@@ -230,6 +246,50 @@ describe("GitLabClient", () => {
       },
     ]);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/12/discussions?per_page=100&page=1",
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/12/discussions?per_page=100&page=2",
+    ]);
+  });
+
+  it("follows GitLab pagination when retrieving general merge-request notes", async () => {
+    const firstNote = {
+      id: 1,
+      body: "Please add a regression test.",
+      author: { name: "Mira", username: "mira" },
+      created_at: "2026-01-01T00:00:00.000Z",
+      updated_at: "2026-01-01T00:00:00.000Z",
+      system: false,
+    };
+    const secondNote = {
+      ...firstNote,
+      id: 2,
+      body: "Thanks, done.",
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([firstNote]), {
+          status: 200,
+          headers: { "x-next-page": "2" },
+        }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify([secondNote]), {
+          status: 200,
+          headers: { "x-next-page": "" },
+        }),
+      );
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(client.listMergeRequestNotes(12)).resolves.toEqual([
+      firstNote,
+      secondNote,
+    ]);
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/12/notes?per_page=100&page=1",
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/12/notes?per_page=100&page=2",
+    ]);
   });
 
   it("removes configured invalid-user notes from compact discussions", async () => {
