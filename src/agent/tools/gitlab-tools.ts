@@ -41,7 +41,7 @@ export function createGitLabTools(
           .describe("Number of merge requests to return"),
         state: z
           .enum(["all", "opened", "closed", "merged"])
-          .default("all")
+          .default("closed")
           .describe("Merge-request state to include"),
       }),
       execute: async ({ limit, state }) => ({

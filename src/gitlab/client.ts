@@ -6,6 +6,9 @@ export type GitLabConfig = {
   project: string;
 };
 
+/** Connection settings shared by project discovery and project-scoped calls. */
+export type GitLabConnectionConfig = Omit<GitLabConfig, "project">;
+
 type Fetch = typeof fetch;
 type ExpectedBody = "array" | "object";
 
@@ -57,15 +60,14 @@ export type DiffPosition = {
   head_sha?: string;
 };
 
-export function requireGitLabConfig(env = process.env): GitLabConfig {
+export function requireGitLabConnectionConfig(
+  env = process.env,
+): GitLabConnectionConfig {
   const token = env.GITLAB_TOKEN?.trim();
-  const project = env.GITLAB_PROJECT?.trim();
   const baseUrl = env.GITLAB_URL?.trim();
-  const missing = [
-    !baseUrl && "GITLAB_URL",
-    !token && "GITLAB_TOKEN",
-    !project && "GITLAB_PROJECT",
-  ].filter(Boolean);
+  const missing = [!baseUrl && "GITLAB_URL", !token && "GITLAB_TOKEN"].filter(
+    Boolean,
+  );
   if (missing.length) {
     throw new ServiceError(
       "gitlab",
@@ -90,8 +92,24 @@ export function requireGitLabConfig(env = process.env): GitLabConfig {
   return {
     baseUrl: baseUrl!.replace(/\/+$/, ""),
     token: token!,
-    project: project!,
   };
+}
+
+/**
+ * Backwards-compatible configuration helper for callers that already know the
+ * project. The CLI discovers the project interactively instead.
+ */
+export function requireGitLabConfig(env = process.env): GitLabConfig {
+  const project = env.GITLAB_PROJECT?.trim();
+  if (!project) {
+    throw new ServiceError(
+      "gitlab",
+      "configuration",
+      "Missing required GitLab configuration: GITLAB_PROJECT.",
+    );
+  }
+
+  return { ...requireGitLabConnectionConfig(env), project };
 }
 
 /** A read-only client for the two GitLab endpoints the agent needs. */
@@ -110,6 +128,39 @@ export class GitLabClient {
     return this.get<Project>(
       `/projects/${encodeURIComponent(this.config.project)}`,
       "object",
+    );
+  }
+
+  /**
+   * List projects the token's user is a member of, newest activity first.
+   * GitLab caps a page at 100 entries, so follow its pagination headers.
+   */
+  async listProjects(): Promise<Project[]> {
+    const projects: Project[] = [];
+    let page = 1;
+
+    while (page <= 100) {
+      const { data, nextPage } = await this.getPage<Project[]>(
+        `/projects?membership=true&simple=true&order_by=last_activity_at&sort=desc&per_page=100&page=${page}`,
+        "array",
+      );
+      projects.push(...data);
+      if (!nextPage) return projects;
+      const nextPageNumber = Number(nextPage);
+      if (!Number.isInteger(nextPageNumber) || nextPageNumber <= page) {
+        throw new ServiceError(
+          "gitlab",
+          "incompatible-response",
+          "GitLab returned an invalid pagination response.",
+        );
+      }
+      page = nextPageNumber;
+    }
+
+    throw new ServiceError(
+      "gitlab",
+      "incompatible-response",
+      "GitLab returned more than 100 pages of projects.",
     );
   }
 

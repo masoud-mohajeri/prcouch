@@ -47,9 +47,9 @@ function formatServiceError(error: ServiceError): string {
       case "configuration":
         return `[error] GitLab configuration issue: ${error.message} Update .env and try again.`;
       case "authentication":
-        return `[error] GitLab access was denied${status}. Check GITLAB_TOKEN has read_api (or Merge Request: Read) access and can access GITLAB_PROJECT.${requestId}`;
+        return `[error] GitLab access was denied${status}. Check GITLAB_TOKEN has read_api (or Merge Request: Read) access and can list the selected project.${requestId}`;
       case "not-found":
-        return `[error] GitLab could not find the configured project${status}. Check GITLAB_URL and GITLAB_PROJECT.${requestId}`;
+        return `[error] GitLab could not find the selected project${status}. Check GITLAB_URL and the token's project access.${requestId}`;
       case "rate-limit":
         return `[error] GitLab rate limit reached${status}. Wait and try again.${retryAfter}${requestId}`;
       case "server":

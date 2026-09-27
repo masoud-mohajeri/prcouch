@@ -34,7 +34,7 @@ describe("formatCliError", () => {
         }),
       ),
     ).toBe(
-      "[error] GitLab access was denied (HTTP 403). Check GITLAB_TOKEN has read_api (or Merge Request: Read) access and can access GITLAB_PROJECT. Request ID: gitlab-request-123.",
+      "[error] GitLab access was denied (HTTP 403). Check GITLAB_TOKEN has read_api (or Merge Request: Read) access and can list the selected project. Request ID: gitlab-request-123.",
     );
   });
 

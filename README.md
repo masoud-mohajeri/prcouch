@@ -20,8 +20,8 @@ src/
 
 - Node.js 22.12 or later
 - An OpenAI API key
-- A GitLab project and a read-only GitLab token (`read_api` or fine-grained
-  **Merge Request: Read** permission)
+- A read-only GitLab token (`read_api` or fine-grained **Merge Request: Read**
+  permission) that can list the project to analyze
 
 Docker Desktop with Docker Compose v2 is only required for self-hosted Laminar
 evaluation tracing.
@@ -35,25 +35,30 @@ npm install
 npm start -- "List unresolved review comments in recent merge requests"
 ```
 
-When run directly in an interactive terminal, `npm start` opens a chat session:
-it prompts for further requests after every response and retains a bounded
-window of recent conversational context for follow-up questions. Verbose tool
-payloads are discarded after a turn, so the agent re-fetches GitLab data when a
-follow-up needs those details. History exists only in memory and is discarded
-when the process exits. Supplying a quoted request keeps the command convenient
-for scripts and automation; noninteractive commands remain one-shot.
+When run directly in an interactive terminal, `npm start` first prompts for a
+GitLab project, then opens a chat session that prompts for further requests
+after every response and retains a bounded window of recent conversational
+context for follow-up questions. Verbose tool payloads are discarded after a
+turn, so the agent re-fetches GitLab data when a follow-up needs those details.
+History exists only in memory and is discarded when the process exits. You can
+provide a quoted request to run one request after choosing the project.
 
-The agent requires all four settings below at startup:
+Project selection requires an interactive terminal; noninteractive/piped runs
+are not supported because the project is no longer read from an environment
+variable.
+
+The agent requires these settings at startup:
 
 ```dotenv
 OPENAI_API_KEY=...
 GITLAB_URL=https://gitlab.com
 GITLAB_TOKEN=...
-GITLAB_PROJECT=group/project
 ```
 
-`GITLAB_PROJECT` can be a namespace/project path or a numeric GitLab project
-ID. `GITLAB_URL` must be set explicitly, including when using GitLab.com.
+At the start of every interactive session, the CLI lists the projects available
+to the token and prompts you to select one. The selected project is bound to
+the agent's GitLab tools for the entire session. `GITLAB_URL` must be set
+explicitly, including when using GitLab.com.
 
 Set `OPENAI_MODEL` to a model available to your account; it defaults to
 `gpt-5-mini`. Optionally, set `OPENAI_BASE_URL` to use an OpenAI-compatible
@@ -89,7 +94,7 @@ filesystem path.
 ## Examples
 
 ```bash
-npm start -- "What is the configured GitLab project name?"
+npm start -- "What is the selected GitLab project name?"
 npm start -- "List unresolved review comments by Ava, including file, line, and commit SHA."
 npm start -- "Categorize the review comments and save each analysis with a rationale."
 npm start -- "Generate an HTML report for saved security comments."

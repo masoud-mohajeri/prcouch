@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { GitLabClient, requireGitLabConfig } from "../src/gitlab/client.js";
+import {
+  GitLabClient,
+  requireGitLabConnectionConfig,
+} from "../src/gitlab/client.js";
 
 const config = {
   baseUrl: "https://gitlab.example.test",
@@ -11,21 +14,39 @@ const config = {
 describe("GitLabClient", () => {
   it("rejects incomplete GitLab configuration", () => {
     expect(() =>
-      requireGitLabConfig({
+      requireGitLabConnectionConfig({
         GITLAB_TOKEN: "token",
-        GITLAB_PROJECT: "team/service",
       }),
     ).toThrow("GITLAB_URL");
   });
 
   it("rejects a malformed GitLab URL before making a request", () => {
     expect(() =>
-      requireGitLabConfig({
+      requireGitLabConnectionConfig({
         GITLAB_URL: "not-a-url",
         GITLAB_TOKEN: "token",
-        GITLAB_PROJECT: "team/service",
       }),
     ).toThrow("GITLAB_URL must be a valid http(s) URL");
+  });
+
+  it("lists projects available to the authenticated user", async () => {
+    const projects = [
+      { id: 42, name: "Billing", path_with_namespace: "team/billing" },
+    ];
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response(JSON.stringify(projects), { status: 200 }),
+      );
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(client.listProjects()).resolves.toEqual(projects);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "https://gitlab.example.test/api/v4/projects?membership=true&simple=true&order_by=last_activity_at&sort=desc&per_page=100&page=1",
+      expect.objectContaining({
+        headers: expect.objectContaining({ "PRIVATE-TOKEN": "secret" }),
+      }),
+    );
   });
 
   it("lists the requested number of recently updated merge requests", async () => {
