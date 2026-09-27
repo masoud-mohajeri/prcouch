@@ -23,7 +23,7 @@ describe("review-analysis evaluation fixture", () => {
     directories.push(directory);
 
     const result = await executeReviewAnalysisFlow({
-      analysisPath: join(directory, "data", "analyzed-comments.json"),
+      analysisPath: join(directory, "data", "analytics.sqlite"),
       reportDirectory: join(directory, "reports"),
     });
 

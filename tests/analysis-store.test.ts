@@ -1,6 +1,7 @@
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import Database from "better-sqlite3";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -24,10 +25,8 @@ async function createStore() {
   directories.push(directory);
   return {
     directory,
-    path: join(directory, "nested", "analyzed-comments.json"),
-    store: new AnalysisStore(
-      join(directory, "nested", "analyzed-comments.json"),
-    ),
+    path: join(directory, "nested", "analytics.sqlite"),
+    store: new AnalysisStore(join(directory, "nested", "analytics.sqlite")),
   };
 }
 
@@ -69,7 +68,35 @@ function input(
 }
 
 describe("AnalysisStore", () => {
-  it("creates a versioned JSON file and records generated analysis metadata", async () => {
+  it("applies the analytics schema on a new database", async () => {
+    const { path, store } = await createStore();
+    store.close();
+    const database = new Database(path, { readonly: true });
+
+    try {
+      const tables = database
+        .prepare(
+          "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        )
+        .all() as Array<{ name: string }>;
+      expect(tables.map((table) => table.name)).toEqual(
+        expect.arrayContaining([
+          "analysis_batches",
+          "comment_analytics",
+          "comments",
+          "discussions",
+          "issue_categories",
+          "merge_requests",
+          "projects",
+          "sync_runs",
+        ]),
+      );
+    } finally {
+      database.close();
+    }
+  });
+
+  it("creates a migrated SQLite database and records generated analysis metadata", async () => {
     const { store, path } = await createStore();
 
     const record = await store.upsert(input());
@@ -81,10 +108,7 @@ describe("AnalysisStore", () => {
     });
     expect(record.analyzedAt).toMatch(/^\d{4}-\d{2}-\d{2}T.*Z$/);
     expect(await store.list()).toEqual([record]);
-    expect(JSON.parse(await readFile(path, "utf8"))).toEqual({
-      version: 1,
-      records: [record],
-    });
+    expect(path).toMatch(/analytics\.sqlite$/);
   });
 
   it("upserts immutable project/note keys and serializes concurrent writes", async () => {
@@ -109,13 +133,8 @@ describe("AnalysisStore", () => {
     ]);
   });
 
-  it("treats an empty file as a new store and rejects invalid analysis input", async () => {
-    const { store, path } = await createStore();
-    await writeFile(path, "", "utf8").catch(async () => {
-      // The parent directory has not been created yet; the first write creates it through the store.
-      await store.upsert(input());
-      await writeFile(path, "", "utf8");
-    });
+  it("starts empty and rejects invalid analysis input", async () => {
+    const { store } = await createStore();
 
     await expect(store.list()).resolves.toEqual([]);
     await expect(store.upsert(input({ category: "   " }))).rejects.toThrow(
@@ -126,20 +145,10 @@ describe("AnalysisStore", () => {
     ).rejects.toThrow("Invalid enum value");
   });
 
-  it("reports malformed and unsupported-version files clearly", async () => {
-    const { store, path } = await createStore();
-    await store.upsert(input());
-    await writeFile(path, "{ not JSON", "utf8");
-    await expect(store.list()).rejects.toThrow("malformed JSON");
-
-    await writeFile(path, JSON.stringify({ version: 2, records: [] }), "utf8");
-    await expect(store.list()).rejects.toThrow("unsupported version 2");
-  });
-
   it("uses the default path or a configured path without accepting a tool argument", () => {
-    expect(getAnalysisStorePath({})).toMatch(/data\/analyzed-comments\.json$/);
+    expect(getAnalysisStorePath({})).toMatch(/data\/analytics\.sqlite$/);
     expect(
-      getAnalysisStorePath({ ANALYSIS_STORE_PATH: "custom/comments.json" }),
-    ).toMatch(/custom\/comments\.json$/);
+      getAnalysisStorePath({ ANALYSIS_STORE_PATH: "custom/comments.sqlite" }),
+    ).toMatch(/custom\/comments\.sqlite$/);
   });
 });

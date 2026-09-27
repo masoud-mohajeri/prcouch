@@ -13,7 +13,7 @@ export class AnalyzedCommentService {
   ) {}
 
   async save(input: AnalyzedCommentInput): Promise<AnalyzedCommentRecord> {
-    await this.categoryPolicy.require(input.category);
-    return this.store.upsert(input);
+    const category = await this.categoryPolicy.require(input.category);
+    return this.store.upsert(input, category);
   }
 }

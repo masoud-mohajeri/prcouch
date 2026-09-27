@@ -85,16 +85,19 @@ one, the diff commit SHA.
 For review analysis, the agent first reads the committed category policy at
 [`config/comment-categories.json`](config/comment-categories.json), then saves
 an approved category, resolution, and evidence-based rationale for each comment.
-Saved analyses live in a local JSON ledger:
+Saved analyses live in a local SQLite database:
 
 ```text
-data/analyzed-comments.json
+data/analytics.sqlite
 ```
 
-The ledger is gitignored because it can contain review content and author data.
+The database is gitignored because it can contain review content and author data.
 Set `ANALYSIS_STORE_PATH` to use a different location, and keep that location
 access-controlled. The agent never writes to GitLab or to a model-selected
 filesystem path.
+
+Use `npm run db:studio` to inspect the local database with Drizzle Studio. It
+is a local development tool and can edit data, so do not expose it remotely.
 
 ## Examples
 
@@ -125,7 +128,7 @@ credentials, these settings are available:
 | `OPENAI_MODEL`                 | Overrides the default `gpt-5-mini` model.                                                   |
 | `OPENAI_BASE_URL`              | Optional OpenAI-compatible API endpoint; defaults to `https://api.openai.com/v1`.           |
 | `OPENAI_API_MODE`              | `responses` or `chat`; defaults to `responses` for OpenAI and `chat` for a custom base URL. |
-| `ANALYSIS_STORE_PATH`          | Changes the local JSON analysis ledger path.                                                |
+| `ANALYSIS_STORE_PATH`          | Changes the local SQLite database path.                                                     |
 | `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy.                                              |
 | `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
 | `LMNR_*`                       | Configures self-hosted Laminar evaluation tracing.                                          |
