@@ -40,6 +40,8 @@ function createService() {
       return json(mergeRequests[0]);
     if (url.pathname.endsWith("/merge_requests/11"))
       return json(mergeRequests[1]);
+    if (url.pathname.endsWith("/merge_requests/10/notes")) return json([]);
+    if (url.pathname.endsWith("/merge_requests/11/notes")) return json([]);
     if (url.pathname.endsWith("/merge_requests/10/discussions")) {
       return json([
         {
@@ -223,6 +225,48 @@ describe("CommentService", () => {
       "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/10",
       expect.anything(),
     );
+  });
+
+  it("includes general merge-request notes when no discussions exist", async () => {
+    const fetchMock = vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(input.toString());
+      if (url.pathname.endsWith("/projects/team%2Fservice"))
+        return json(project);
+      if (url.pathname.endsWith("/merge_requests/10"))
+        return json(mergeRequests[0]);
+      if (url.pathname.endsWith("/merge_requests/10/discussions"))
+        return json([]);
+      if (url.pathname.endsWith("/merge_requests/10/notes")) {
+        return json([
+          {
+            id: 5,
+            body: "Please add a test for the empty state.",
+            author: { name: "Mira", username: "mira" },
+            created_at: "2026-01-04T09:00:00.000Z",
+            updated_at: "2026-01-04T09:00:00.000Z",
+            system: false,
+          },
+        ]);
+      }
+      return new Response("Not found", {
+        status: 404,
+        statusText: "Not Found",
+      });
+    });
+    const service = new CommentService(new GitLabClient(config, fetchMock));
+
+    const page = await service.list(query({ mergeRequestIid: 10 }));
+
+    expect(page.total).toBe(1);
+    expect(page.items[0]).toMatchObject({
+      discussionId: "note:5",
+      noteId: 5,
+      body: "Please add a test for the empty state.",
+      location: { oldPath: null, newPath: null, oldLine: null, newLine: null },
+      resolvable: false,
+      resolved: false,
+    });
+    expect(page.items[0]?.discussionHistory).toHaveLength(1);
   });
 
   it("rejects malformed cursors and inverted date filters", async () => {

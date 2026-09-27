@@ -51,6 +51,7 @@ describe("review-analysis evaluation fixture", () => {
         "/api/v4/projects/acme%2Fbilling",
         "/api/v4/projects/acme%2Fbilling/merge_requests?state=all&order_by=updated_at&sort=desc&per_page=100",
         "/api/v4/projects/acme%2Fbilling/merge_requests/41/discussions?per_page=100&page=1",
+        "/api/v4/projects/acme%2Fbilling/merge_requests/41/notes?per_page=100&page=1",
       ]),
     );
   });

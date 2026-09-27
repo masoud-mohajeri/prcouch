@@ -4,6 +4,7 @@ import type {
   DiffPosition,
   GitLabClient,
   MergeRequest,
+  MergeRequestNote,
   Project,
 } from "./client.js";
 
@@ -77,8 +78,10 @@ export type CommentPage = {
 };
 
 /**
- * Reads, normalizes, and filters human GitLab review comments. It deliberately
- * does not mutate GitLab and bounds fan-out across merge requests.
+ * Reads, normalizes, and filters human GitLab merge-request comments. This
+ * includes inline discussion notes and general MR notes, which GitLab exposes
+ * through separate endpoints. It deliberately does not mutate GitLab and
+ * bounds fan-out across merge requests.
  */
 export class CommentService {
   constructor(
@@ -107,12 +110,13 @@ export class CommentService {
           );
     const discussions = await pMap(
       selectedMergeRequests,
-      async (mergeRequest) => ({
-        mergeRequest,
-        discussions: await this.gitlab.listMergeRequestDiscussionDetails(
-          mergeRequest.iid,
-        ),
-      }),
+      async (mergeRequest) => {
+        const [discussions, notes] = await Promise.all([
+          this.gitlab.listMergeRequestDiscussionDetails(mergeRequest.iid),
+          this.gitlab.listMergeRequestNotes(mergeRequest.iid),
+        ]);
+        return { mergeRequest, discussions, notes };
+      },
       { concurrency: this.discussionConcurrency },
     );
     const createdAfter = query.createdAfter
@@ -126,26 +130,35 @@ export class CommentService {
     }
 
     const comments = discussions
-      .flatMap(({ mergeRequest, discussions: mergeRequestDiscussions }) =>
-        mergeRequestDiscussions.flatMap((discussion) => {
-          const discussionHistory = discussion.notes
-            .map((note) => normalizeDiscussionHistoryNote(mergeRequest, note))
-            .sort(
-              (left, right) =>
-                left.createdAt.localeCompare(right.createdAt) ||
-                left.noteId - right.noteId,
-            );
-          return discussion.notes
+      .flatMap(
+        ({
+          mergeRequest,
+          discussions: mergeRequestDiscussions,
+          notes: mergeRequestNotes,
+        }) => [
+          ...mergeRequestDiscussions.flatMap((discussion) => {
+            const discussionHistory = discussion.notes
+              .map((note) => normalizeDiscussionHistoryNote(mergeRequest, note))
+              .sort(
+                (left, right) =>
+                  left.createdAt.localeCompare(right.createdAt) ||
+                  left.noteId - right.noteId,
+              );
+            return discussion.notes
+              .filter((note) => !note.system)
+              .map((note) =>
+                normalizeComment(
+                  mergeRequest,
+                  discussion.id,
+                  note,
+                  discussionHistory,
+                ),
+              );
+          }),
+          ...mergeRequestNotes
             .filter((note) => !note.system)
-            .map((note) =>
-              normalizeComment(
-                mergeRequest,
-                discussion.id,
-                note,
-                discussionHistory,
-              ),
-            );
-        }),
+            .map((note) => normalizeGeneralNote(mergeRequest, note)),
+        ],
       )
       .filter((comment) =>
         matchesQuery(comment, query, createdAfter, createdBefore),
@@ -167,6 +180,24 @@ export class CommentService {
   }
 }
 
+function normalizeGeneralNote(
+  mergeRequest: MergeRequest,
+  note: MergeRequestNote,
+): NormalizedComment {
+  const normalizedNote = normalizeDiscussionHistoryNote(mergeRequest, note);
+  return {
+    discussionId: note.discussion_id ?? `note:${note.id}`,
+    ...normalizedNote,
+    mergeRequest: {
+      iid: mergeRequest.iid,
+      title: mergeRequest.title,
+      state: mergeRequest.state,
+      webUrl: mergeRequest.web_url,
+    },
+    discussionHistory: [normalizedNote],
+  };
+}
+
 function normalizeComment(
   mergeRequest: MergeRequest,
   discussionId: string,
@@ -177,8 +208,8 @@ function normalizeComment(
     created_at: string;
     updated_at: string;
     system: boolean;
-    resolvable: boolean;
-    resolved: boolean;
+    resolvable?: boolean;
+    resolved?: boolean;
     position?: DiffPosition;
   },
   discussionHistory: DiscussionHistoryNote[],
@@ -205,8 +236,8 @@ function normalizeDiscussionHistoryNote(
     created_at: string;
     updated_at: string;
     system: boolean;
-    resolvable: boolean;
-    resolved: boolean;
+    resolvable?: boolean;
+    resolved?: boolean;
     position?: DiffPosition;
   },
 ): DiscussionHistoryNote {
@@ -219,8 +250,8 @@ function normalizeDiscussionHistoryNote(
     updatedAt: note.updated_at,
     sourceUrl: `${mergeRequest.web_url}#note_${note.id}`,
     system: note.system,
-    resolvable: note.resolvable,
-    resolved: note.resolved,
+    resolvable: note.resolvable ?? false,
+    resolved: note.resolved ?? false,
     location: {
       oldPath: position?.old_path ?? null,
       newPath: position?.new_path ?? null,

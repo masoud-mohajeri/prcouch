@@ -52,6 +52,20 @@ export type DiscussionDetails = {
   }>;
 };
 
+/** A general (non-threaded) note attached to a merge request. */
+export type MergeRequestNote = {
+  id: number;
+  body: string;
+  author: { name: string; username: string };
+  created_at: string;
+  updated_at: string;
+  system: boolean;
+  resolvable?: boolean;
+  resolved?: boolean;
+  position?: DiffPosition;
+  discussion_id?: string;
+};
+
 /** A compact representation of a discussion attached to a diff. */
 export type Discussion = {
   /** The new-side line when available, otherwise the old-side line. */
@@ -255,6 +269,42 @@ export class GitLabClient {
       "gitlab",
       "incompatible-response",
       "GitLab returned more than 100 pages of discussions for this merge request.",
+    );
+  }
+
+  /**
+   * Retrieve general merge-request notes. GitLab keeps these separate from
+   * discussion notes, so callers that present all human comments need both
+   * endpoints.
+   */
+  async listMergeRequestNotes(
+    mergeRequestIid: number,
+  ): Promise<MergeRequestNote[]> {
+    const notes: MergeRequestNote[] = [];
+    let page = 1;
+
+    while (page <= 100) {
+      const { data, nextPage } = await this.getPage<MergeRequestNote[]>(
+        `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}/notes?per_page=100&page=${page}`,
+        "array",
+      );
+      notes.push(...data);
+      if (!nextPage) return notes;
+      const nextPageNumber = Number(nextPage);
+      if (!Number.isInteger(nextPageNumber) || nextPageNumber <= page) {
+        throw new ServiceError(
+          "gitlab",
+          "incompatible-response",
+          "GitLab returned an invalid pagination response.",
+        );
+      }
+      page = nextPageNumber;
+    }
+
+    throw new ServiceError(
+      "gitlab",
+      "incompatible-response",
+      "GitLab returned more than 100 pages of merge request notes.",
     );
   }
 

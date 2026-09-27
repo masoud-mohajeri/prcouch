@@ -69,6 +69,7 @@ export async function executeReviewAnalysisFlow(paths: {
           },
         ]);
       }
+      if (url.pathname.endsWith("/merge_requests/41/notes")) return json([]);
       return new Response("Not found", {
         status: 404,
         statusText: "Not Found",

@@ -101,7 +101,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listComments]: tool({
       description:
-        "List normalized human GitLab review comments. Each item includes discussionHistory with every note and reply in that discussion, ordered oldest to newest, including system events. Filter authorName case-insensitively by substring against the item's author name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
+        "List normalized human GitLab merge-request comments, including inline discussion notes and general MR notes. Each item includes discussionHistory with every note and reply in that discussion, ordered oldest to newest, including system events. Filter authorName case-insensitively by substring against the item's author name or username. Inline comments include old/new file and line fields plus commitSha when GitLab provides a diff SHA; commitSha is not a commit message.",
       inputSchema: z
         .object({
           authorName: z
