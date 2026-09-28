@@ -100,6 +100,20 @@ export const analyzedCommentInputSchema = z.object({
 
 export type AnalyzedCommentInput = z.input<typeof analyzedCommentInputSchema>;
 
+/** The GitLab fields retained locally before a comment is categorized. */
+export const fetchedCommentInputSchema = analyzedCommentInputSchema.pick({
+  project: true,
+  mergeRequest: true,
+  comment: true,
+});
+
+export type FetchedCommentInput = z.input<typeof fetchedCommentInputSchema>;
+
+export type FetchedCommentSaveResult = {
+  saved: number;
+  existing: number;
+};
+
 export const analyzedCommentRecordSchema = analyzedCommentInputSchema.extend({
   id: z.string().min(1),
   analyzedAt: z.string().datetime({ offset: true }),
@@ -312,6 +326,145 @@ export class AnalysisStore {
       )
       .get() as { count: number } | undefined;
     return result?.count ?? 0;
+  }
+
+  /**
+   * Stores newly retrieved GitLab comments as pending work for the batch
+   * categorizer. Existing comments are deliberately retained unchanged so a
+   * later fetch cannot overwrite a completed analysis.
+   */
+  async saveFetchedComments(
+    inputs: FetchedCommentInput[],
+  ): Promise<FetchedCommentSaveResult> {
+    const parsed = inputs.map((input) =>
+      fetchedCommentInputSchema.parse(input),
+    );
+    return this.sqlite.transaction(() => {
+      let saved = 0;
+      let existing = 0;
+      const now = new Date().toISOString();
+
+      for (const input of parsed) {
+        this.db
+          .insert(projects)
+          .values({
+            id: input.project.id,
+            pathWithNamespace: input.project.pathWithNamespace,
+            webUrl: input.project.webUrl,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: projects.id,
+            set: {
+              pathWithNamespace: input.project.pathWithNamespace,
+              webUrl: input.project.webUrl,
+              updatedAt: now,
+            },
+          })
+          .run();
+
+        this.db
+          .insert(mergeRequests)
+          .values({
+            projectId: input.project.id,
+            iid: input.mergeRequest.iid,
+            title: input.mergeRequest.title,
+            webUrl: input.mergeRequest.webUrl,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [mergeRequests.projectId, mergeRequests.iid],
+            set: {
+              title: input.mergeRequest.title,
+              webUrl: input.mergeRequest.webUrl,
+              updatedAt: now,
+            },
+          })
+          .run();
+        const mergeRequestId = this.requireId(
+          this.db
+            .select({ id: mergeRequests.id })
+            .from(mergeRequests)
+            .where(
+              and(
+                eq(mergeRequests.projectId, input.project.id),
+                eq(mergeRequests.iid, input.mergeRequest.iid),
+              ),
+            )
+            .get(),
+          "merge request",
+        );
+
+        this.db
+          .insert(discussions)
+          .values({
+            mergeRequestId,
+            gitlabDiscussionId: input.comment.discussionId,
+            oldPath: input.comment.location.oldPath,
+            newPath: input.comment.location.newPath,
+            oldLine: input.comment.location.oldLine,
+            newLine: input.comment.location.newLine,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoUpdate({
+            target: [
+              discussions.mergeRequestId,
+              discussions.gitlabDiscussionId,
+            ],
+            set: {
+              oldPath: input.comment.location.oldPath,
+              newPath: input.comment.location.newPath,
+              oldLine: input.comment.location.oldLine,
+              newLine: input.comment.location.newLine,
+              updatedAt: now,
+            },
+          })
+          .run();
+        const discussionId = this.requireId(
+          this.db
+            .select({ id: discussions.id })
+            .from(discussions)
+            .where(
+              and(
+                eq(discussions.mergeRequestId, mergeRequestId),
+                eq(discussions.gitlabDiscussionId, input.comment.discussionId),
+              ),
+            )
+            .get(),
+          "discussion",
+        );
+
+        const result = this.db
+          .insert(comments)
+          .values({
+            projectId: input.project.id,
+            mergeRequestId,
+            discussionId,
+            noteId: input.comment.noteId,
+            body: input.comment.body,
+            sourceUrl: input.comment.sourceUrl,
+            authorName: input.comment.author.name,
+            authorUsername: input.comment.author.username,
+            commentCreatedAt: input.comment.createdAt,
+            oldPath: input.comment.location.oldPath,
+            newPath: input.comment.location.newPath,
+            oldLine: input.comment.location.oldLine,
+            newLine: input.comment.location.newLine,
+            commitSha: input.comment.commitSha,
+            analysisStatus: "pending",
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .run();
+        if (result.changes) saved += 1;
+        else existing += 1;
+      }
+      return { saved, existing };
+    })();
   }
 
   async createAnalysisBatch(model: string): Promise<number> {

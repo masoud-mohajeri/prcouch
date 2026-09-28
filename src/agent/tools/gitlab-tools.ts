@@ -1,6 +1,10 @@
 import { tool } from "ai";
 import { z } from "zod";
 
+import {
+  AnalysisStore,
+  type FetchedCommentInput,
+} from "../../analysis/store.js";
 import { GitLabClient, requireGitLabConfig } from "../../gitlab/client.js";
 import { CommentService } from "../../gitlab/comments.js";
 
@@ -19,6 +23,7 @@ export const gitLabToolNames = {
  */
 export function createGitLabTools(
   client = new GitLabClient(requireGitLabConfig()),
+  analysisStore = new AnalysisStore(),
 ) {
   const comments = new CommentService(client);
 
@@ -101,7 +106,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listComments]: tool({
       description:
-        "Retrieve normalized GitLab review discussions and comments, including inline and general merge-request notes. For a specific merge request, pass mergeRequestIid. Use this for filtered review-comment requests: each item includes its author, merge request, inline location, commit-SHA context, and full oldest-to-newest note/reply history, including system events. Filter authorName case-insensitively by substring against the author name or username. A commitSha is a diff SHA, not a commit message.",
+        "Retrieve normalized GitLab review discussions and comments, including inline and general merge-request notes, and save newly retrieved comments locally as pending analysis work. For a specific merge request, pass mergeRequestIid. Use this for filtered review-comment requests: each item includes its author, merge request, inline location, commit-SHA context, and full oldest-to-newest note/reply history, including system events. Filter authorName case-insensitively by substring against the author name or username. A commitSha is a diff SHA, not a commit message.",
       inputSchema: z
         .object({
           authorName: z
@@ -162,7 +167,34 @@ export function createGitLabTools(
             });
           }
         }),
-      execute: async (query) => comments.list(query),
+      execute: async (query) => {
+        const page = await comments.list(query);
+        const persistence = await analysisStore.saveFetchedComments(
+          page.items.map<FetchedCommentInput>((comment) => ({
+            project: {
+              id: page.project.id,
+              pathWithNamespace: page.project.path_with_namespace,
+              webUrl: page.project.web_url,
+            },
+            mergeRequest: {
+              iid: comment.mergeRequest.iid,
+              title: comment.mergeRequest.title,
+              webUrl: comment.mergeRequest.webUrl,
+            },
+            comment: {
+              discussionId: comment.discussionId,
+              noteId: comment.noteId,
+              body: comment.body,
+              sourceUrl: comment.sourceUrl,
+              createdAt: comment.createdAt,
+              author: comment.author,
+              location: comment.location,
+              commitSha: comment.commitSha,
+            },
+          })),
+        );
+        return { ...page, persistence };
+      },
     }),
   };
 }

@@ -31,7 +31,7 @@ export function createAgentTools({
 }: AgentToolOptions = {}) {
   return instrumentToolExecutions(
     {
-      ...createGitLabTools(client),
+      ...createGitLabTools(client, analysisStore),
       ...createAnalysisTools(analysisStore, categoryPolicy, reportGenerator),
     },
     onToolExecution,

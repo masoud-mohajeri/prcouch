@@ -1,6 +1,7 @@
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { describe, expect, it } from "vitest";
+import { mkdtemp, rm } from "node:fs/promises";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { AnalysisStore } from "../src/analysis/store.js";
 import { CommentCategoryPolicy } from "../src/analysis/category-policy.js";
@@ -13,6 +14,16 @@ import {
   createGitLabTools,
   gitLabToolNames,
 } from "../src/agent/tools/index.js";
+
+const directories: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(
+    directories
+      .splice(0)
+      .map((directory) => rm(directory, { recursive: true, force: true })),
+  );
+});
 
 describe("agent tools", () => {
   it("separates GitLab retrieval tools from analysis tools", () => {
@@ -68,4 +79,86 @@ describe("agent tools", () => {
       ...Object.values(analysisToolNames),
     ]);
   });
+
+  it("saves fetched comments as pending analysis work", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "prcouch-gitlab-tool-"));
+    directories.push(directory);
+    const store = new AnalysisStore(join(directory, "analytics.sqlite"));
+    const client = new GitLabClient(
+      {
+        baseUrl: "https://gitlab.example.test",
+        token: "test",
+        project: "team/service",
+      },
+      async (input) => {
+        const url = new URL(input.toString());
+        if (url.pathname.endsWith("/projects/team%2Fservice"))
+          return json({
+            id: 7,
+            name: "Service",
+            path_with_namespace: "team/service",
+            web_url: "https://gitlab.example.test/team/service",
+          });
+        if (url.pathname.endsWith("/merge_requests/12"))
+          return json({
+            id: 12,
+            iid: 12,
+            title: "Validate invoices",
+            state: "opened",
+            web_url:
+              "https://gitlab.example.test/team/service/-/merge_requests/12",
+          });
+        if (url.pathname.endsWith("/merge_requests/12/discussions"))
+          return json([
+            {
+              id: "discussion-12",
+              notes: [
+                {
+                  id: 45,
+                  body: "Validate the invoice number.",
+                  author: { name: "Ava", username: "ava" },
+                  created_at: "2026-01-02T03:04:05.000Z",
+                  updated_at: "2026-01-02T03:04:05.000Z",
+                  system: false,
+                },
+              ],
+            },
+          ]);
+        if (url.pathname.endsWith("/merge_requests/12/notes")) return json([]);
+        return new Response("Not found", { status: 404 });
+      },
+    );
+    const listComments = createGitLabTools(client, store)[
+      gitLabToolNames.listComments
+    ];
+    if (!listComments.execute)
+      throw new Error("list_comments must be executable");
+
+    try {
+      const result = await listComments.execute(
+        {
+          mergeRequestIid: 12,
+          state: "all",
+          includeResolved: true,
+          limit: 25,
+        },
+        { toolCallId: "test-call", messages: [] },
+      );
+
+      expect(result).toMatchObject({
+        total: 1,
+        persistence: { saved: 1, existing: 0 },
+      });
+      expect(await store.countPendingComments()).toBe(1);
+    } finally {
+      store.close();
+    }
+  });
 });
+
+function json(body: unknown) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+}

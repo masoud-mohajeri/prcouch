@@ -8,6 +8,7 @@ import {
   AnalysisStore,
   getAnalysisStorePath,
   type AnalyzedCommentInput,
+  type FetchedCommentInput,
 } from "../src/analysis/store.js";
 
 const directories: string[] = [];
@@ -141,6 +142,38 @@ describe("AnalysisStore", () => {
         }),
       ]),
     );
+  });
+
+  it("stores fetched comments as pending work without duplicating them", async () => {
+    const { store, path } = await createStore();
+    const {
+      category: _category,
+      resolution: _resolution,
+      rationale: _rationale,
+      ...fetched
+    } = input();
+
+    await expect(
+      store.saveFetchedComments([fetched as FetchedCommentInput]),
+    ).resolves.toEqual({ saved: 1, existing: 0 });
+    await expect(
+      store.saveFetchedComments([fetched as FetchedCommentInput]),
+    ).resolves.toEqual({ saved: 0, existing: 1 });
+    expect(await store.countPendingComments()).toBe(1);
+    expect(await store.list()).toEqual([]);
+
+    const database = new Database(path, { readonly: true });
+    try {
+      expect(
+        database
+          .prepare(
+            "SELECT analysis_status AS status, body FROM comments WHERE note_id = 45",
+          )
+          .get(),
+      ).toEqual({ status: "pending", body: "Validate the invoice number." });
+    } finally {
+      database.close();
+    }
   });
 
   it("starts empty and rejects invalid analysis input", async () => {

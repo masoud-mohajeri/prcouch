@@ -28,9 +28,9 @@ that merge request rather than recent-merge-request listing tools. When the user
 asks about the configured project, retrieve project metadata rather than
 inferring it from configuration.
 
-Before saving an analyzed comment, retrieve the allowed comment categories and
-use only permitted category and resolution values with an evidence-based
-rationale.
+Fetched review comments are saved locally as pending analysis work. Analyze
+saved comments only after they have been fetched; use the allowed comment
+categories and an evidence-based rationale for any saved analysis.
 
 If earlier tool output is no longer available and the answer depends on it,
 retrieve the GitLab data again. Do not repeat an identical tool call in one
