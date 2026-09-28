@@ -31,7 +31,13 @@ const mergeRequests = [
   },
 ];
 
-function createService() {
+function createService({
+  invalidCommentUsers,
+  includeAutomatedNote = false,
+}: {
+  invalidCommentUsers?: readonly string[];
+  includeAutomatedNote?: boolean;
+} = {}) {
   const fetchMock = vi.fn(async (input: string | URL | Request) => {
     const url = new URL(input.toString());
     if (url.pathname.endsWith("/projects/team%2Fservice")) return json(project);
@@ -103,6 +109,19 @@ function createService() {
               created_at: "2026-01-02T11:00:00.000Z",
               resolved: true,
             }),
+            ...(includeAutomatedNote
+              ? [
+                  note({
+                    id: 5,
+                    body: "Pipeline passed.",
+                    author: {
+                      name: "Jenkins Pusher",
+                      username: "JenkinsPusher",
+                    },
+                    created_at: "2026-01-02T13:00:00.000Z",
+                  }),
+                ]
+              : []),
           ],
         },
       ]);
@@ -132,7 +151,9 @@ function createService() {
   });
 
   return {
-    service: new CommentService(new GitLabClient(config, fetchMock)),
+    service: new CommentService(
+      new GitLabClient({ ...config, invalidCommentUsers }, fetchMock),
+    ),
     fetchMock,
   };
 }
@@ -168,6 +189,20 @@ function json(body: unknown) {
 }
 
 describe("CommentService", () => {
+  it("excludes configured automated commenters from normalized saved comments", async () => {
+    const { service } = createService({
+      invalidCommentUsers: ["jenkinspusher"],
+      includeAutomatedNote: true,
+    });
+
+    const page = await service.list(query());
+
+    expect(page.total).toBe(3);
+    expect(page.items.map((item) => item.author.username)).not.toContain(
+      "JenkinsPusher",
+    );
+  });
+
   it("normalizes human comments and filters authors case-insensitively", async () => {
     const { service } = createService();
 

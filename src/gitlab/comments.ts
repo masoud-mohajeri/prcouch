@@ -178,6 +178,9 @@ export class CommentService {
             ),
         ],
       )
+      .filter(
+        (comment) => !this.gitlab.isInvalidCommentUser(comment.author.username),
+      )
       .filter((comment) =>
         matchesQuery(comment, query, createdAfter, createdBefore),
       )

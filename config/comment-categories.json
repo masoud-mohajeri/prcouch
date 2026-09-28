@@ -2,28 +2,36 @@
   "version": 1,
   "categories": [
     {
+      "id": "code_change",
+      "label": "Request a code change",
+      "description": "A request to change the implementation or development workflow.",
+      "severity": "medium",
+      "defaultResolution": "open",
+      "action": "Add automated linting, static analysis, architecture checks, and clear coding standards before PR creation."
+    },
+    {
       "id": "bug",
-      "label": "Bug",
+      "label": "Point out a bug",
       "description": "A functional defect or regression.",
       "severity": "high",
       "defaultResolution": "open",
-      "action": "Fix the defect, add a focused test, then resolve the discussion."
+      "action": "Run automated tests, type checks, edge-case tests, and local/CI validation before opening the PR."
     },
     {
       "id": "security",
-      "label": "Security",
+      "label": "Raise a security concern",
       "description": "A security or privacy vulnerability.",
       "severity": "critical",
       "defaultResolution": "open",
-      "action": "Prioritize remediation and request security review before resolving."
+      "action": "Add automated security scanning, dependency checks, secret detection, and secure coding rules to CI."
     },
     {
       "id": "performance",
-      "label": "Performance",
+      "label": "Question performance or scalability",
       "description": "An inefficient implementation or scalability risk.",
       "severity": "medium",
       "defaultResolution": "open",
-      "action": "Benchmark, optimize the bottleneck, and validate the impact."
+      "action": "Add benchmarks, performance tests, query analysis, and predefined performance constraints for critical paths."
     },
     {
       "id": "correctness",
@@ -35,51 +43,51 @@
     },
     {
       "id": "maintainability",
-      "label": "Maintainability",
+      "label": "Suggest an improvement",
       "description": "A readability, structure, duplication, or technical-debt concern.",
       "severity": "low",
       "defaultResolution": "needs_discussion",
-      "action": "Refactor when the agreed value justifies the change."
+      "action": "Use shared design patterns, reusable components, code templates, and pre-PR self-review checklists."
     },
     {
       "id": "testing",
-      "label": "Testing",
+      "label": "Request or discuss tests",
       "description": "Missing, weak, or incorrect automated coverage.",
       "severity": "medium",
       "defaultResolution": "open",
-      "action": "Add or repair focused automated tests."
+      "action": "Define minimum test expectations and automatically check coverage and required test scenarios in CI."
     },
     {
       "id": "documentation",
-      "label": "Documentation",
+      "label": "Share context or knowledge",
       "description": "Missing or inaccurate documentation or code comments.",
       "severity": "low",
       "defaultResolution": "open",
-      "action": "Update the relevant documentation or explanatory comment."
+      "action": "Document architectural decisions, link relevant tickets/docs in the PR, and maintain lightweight ADRs for important decisions."
     },
     {
       "id": "style",
-      "label": "Style",
+      "label": "Flag a style or convention issue",
       "description": "A formatting or low-risk convention issue.",
       "severity": "info",
       "defaultResolution": "open",
-      "action": "Apply the agreed project convention."
+      "action": "Enforce formatting, naming, and style rules automatically with linters, formatters, and pre-commit hooks."
     },
     {
       "id": "question",
-      "label": "Question",
+      "label": "Ask for clarification",
       "description": "A request for clarification or an unresolved design decision.",
       "severity": "info",
       "defaultResolution": "needs_discussion",
-      "action": "Answer the question or agree on a decision, then resolve it."
+      "action": "Require clear ticket acceptance criteria, PR descriptions, and inline documentation for non-obvious logic."
     },
     {
       "id": "praise",
-      "label": "Praise",
+      "label": "Give approval or positive feedback",
       "description": "Positive feedback without a requested code change.",
       "severity": "info",
       "defaultResolution": "not_actionable",
-      "action": "Acknowledge the feedback; normally no code change is needed."
+      "action": "Automate routine validation so reviewers can focus on meaningful design decisions and approve low-risk PRs faster."
     },
     {
       "id": "other",

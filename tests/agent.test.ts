@@ -34,9 +34,17 @@ describe("getInitialToolForInput", () => {
     ).toBeUndefined();
   });
 
-  it("recognizes explicit pending-comment categorization requests", () => {
+  it("recognizes natural-language pending-comment categorization requests", () => {
     expect(
       isCategorizePendingCommentsRequest("Categorize pending comments"),
+    ).toBe(true);
+    expect(
+      isCategorizePendingCommentsRequest(
+        "Analyze them and assign them an issue category",
+      ),
+    ).toBe(true);
+    expect(
+      isCategorizePendingCommentsRequest("Assign review comments categories"),
     ).toBe(true);
     expect(isCategorizePendingCommentsRequest("Show comment categories")).toBe(
       false,

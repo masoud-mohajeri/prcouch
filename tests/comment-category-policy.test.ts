@@ -66,13 +66,19 @@ describe("CommentCategoryPolicy", () => {
   it("loads the committed category IDs, actions, and default resolutions", async () => {
     const categories = await new CommentCategoryPolicy().list();
 
-    expect(categories).toHaveLength(11);
+    expect(categories).toHaveLength(12);
+    expect(
+      categories.find((category) => category.id === "code_change"),
+    ).toMatchObject({
+      label: "Request a code change",
+      defaultResolution: "open",
+    });
     expect(
       categories.find((category) => category.id === "security"),
     ).toMatchObject({
       severity: "critical",
       defaultResolution: "open",
-      action: expect.stringContaining("security review"),
+      action: expect.stringContaining("security scanning"),
     });
     expect(categories.every((category) => category.action.length > 0)).toBe(
       true,

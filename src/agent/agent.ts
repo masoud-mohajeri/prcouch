@@ -113,13 +113,37 @@ export function getInitialToolForInput(
   return undefined;
 }
 
-/** Matches the explicit natural-language command for SQLite batch analysis. */
+/** Matches a natural-language command for SQLite batch analysis. */
 export function isCategorizePendingCommentsRequest(input: string): boolean {
   const query = input.toLowerCase();
+  if (/\b(?:show|list|what are|which)\b.*\bcategor/.test(query)) return false;
+
+  const requestsAssignment =
+    /\b(?:categoriz(?:e|ing)|analy[sz](?:e|ing)|assign(?:ing)?|classif(?:y|ying))\b/.test(
+      query,
+    );
+  const mentionsComments = /\b(?:pending )?(?:review )?comments?\b/.test(query);
+  const mentionsCategory = /\b(?:issue )?categor(?:y|ies)\b/.test(query);
+  return requestsAssignment && (mentionsComments || mentionsCategory);
+}
+
+function isCategorizationConfirmation(
+  input: string,
+  chatHistory: ModelMessage[] | undefined,
+): boolean {
+  if (
+    !/^(?:all|all of (?:them|the comments)|yes|go ahead|proceed)\.?$/i.test(
+      input.trim(),
+    )
+  )
+    return false;
+
+  const previousUserRequest = [...(chatHistory ?? [])]
+    .reverse()
+    .find((message) => message.role === "user");
   return (
-    /\bcategoriz(?:e|ing)\b/.test(query) &&
-    /\b(?:pending )?(?:review )?comments?\b/.test(query) &&
-    !/\b(?:show|list|what are|which)\b.*\bcategor/.test(query)
+    typeof previousUserRequest?.content === "string" &&
+    isCategorizePendingCommentsRequest(previousUserRequest.content)
   );
 }
 
@@ -206,7 +230,10 @@ export async function runGitLabAgent(
     recordVisibleChatTurn(chatHistory, userMessage, agentResult.text);
     return agentResult;
   }
-  if (isCategorizePendingCommentsRequest(input)) {
+  if (
+    isCategorizePendingCommentsRequest(input) ||
+    isCategorizationConfirmation(input, chatHistory)
+  ) {
     const store = new AnalysisStore();
     try {
       const result = await new PendingCommentCategorizer(

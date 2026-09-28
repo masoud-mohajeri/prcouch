@@ -234,6 +234,14 @@ export class GitLabClient {
     );
   }
 
+  /** Whether this author is configured as an automated/non-review commenter. */
+  isInvalidCommentUser(username: string): boolean {
+    return isInvalidCommentUser(
+      username,
+      this.config.invalidCommentUsers ?? [],
+    );
+  }
+
   async listMergeRequestDiscussions(
     mergeRequestIid: number,
   ): Promise<Discussion[]> {
