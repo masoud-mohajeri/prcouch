@@ -87,6 +87,18 @@ export type DiffPosition = {
   head_sha?: string;
 };
 
+/** A file diff returned for a merge request. */
+export type MergeRequestChange = {
+  old_path: string;
+  new_path: string;
+  diff: string;
+};
+
+export type MergeRequestCommit = {
+  id: string;
+  message: string;
+};
+
 export function requireGitLabConnectionConfig(
   env = process.env,
 ): GitLabConnectionConfig {
@@ -305,6 +317,54 @@ export class GitLabClient {
       "gitlab",
       "incompatible-response",
       "GitLab returned more than 100 pages of merge request notes.",
+    );
+  }
+
+  /** Retrieves the diff hunks needed to preserve code context for inline notes. */
+  async getMergeRequestChanges(
+    mergeRequestIid: number,
+  ): Promise<MergeRequestChange[]> {
+    const response = await this.get<{ changes: MergeRequestChange[] }>(
+      `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}/changes`,
+      "object",
+    );
+    if (!Array.isArray(response.changes)) {
+      throw new ServiceError(
+        "gitlab",
+        "incompatible-response",
+        "GitLab merge-request changes did not include a changes array.",
+      );
+    }
+    return response.changes;
+  }
+
+  /** Retrieves merge-request commits so an inline note can retain its message. */
+  async listMergeRequestCommits(
+    mergeRequestIid: number,
+  ): Promise<MergeRequestCommit[]> {
+    const commits: MergeRequestCommit[] = [];
+    let page = 1;
+    while (page <= 100) {
+      const { data, nextPage } = await this.getPage<MergeRequestCommit[]>(
+        `/projects/${encodeURIComponent(this.config.project)}/merge_requests/${mergeRequestIid}/commits?per_page=100&page=${page}`,
+        "array",
+      );
+      commits.push(...data);
+      if (!nextPage) return commits;
+      const nextPageNumber = Number(nextPage);
+      if (!Number.isInteger(nextPageNumber) || nextPageNumber <= page) {
+        throw new ServiceError(
+          "gitlab",
+          "incompatible-response",
+          "GitLab returned an invalid pagination response.",
+        );
+      }
+      page = nextPageNumber;
+    }
+    throw new ServiceError(
+      "gitlab",
+      "incompatible-response",
+      "GitLab returned more than 100 pages of merge-request commits.",
     );
   }
 

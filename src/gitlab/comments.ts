@@ -3,6 +3,8 @@ import pMap from "p-map";
 import type {
   DiffPosition,
   GitLabClient,
+  MergeRequestChange,
+  MergeRequestCommit,
   MergeRequest,
   MergeRequestNote,
   Project,
@@ -49,6 +51,10 @@ export type NormalizedComment = {
   commitSha: string | null;
   /** Every note in this discussion, ordered from oldest to newest. */
   discussionHistory: DiscussionHistoryNote[];
+  /** The matching merge-request diff hunk, when GitLab supplied one. */
+  codeThatComentIsOn: string;
+  /** The matching commit's human-readable message, when GitLab supplied one. */
+  commitMessage: string;
 };
 
 export type DiscussionHistoryNote = {
@@ -92,6 +98,15 @@ export class CommentService {
 
   async list(query: CommentQuery): Promise<CommentPage> {
     const offset = parseCursor(query.cursor);
+    const createdAfter = query.createdAfter
+      ? dateFromFilter(query.createdAfter, "createdAfter")
+      : undefined;
+    const createdBefore = query.createdBefore
+      ? dateFromFilter(query.createdBefore, "createdBefore")
+      : undefined;
+    if (createdAfter && createdBefore && createdAfter > createdBefore) {
+      throw new Error("createdAfter must be before or equal to createdBefore.");
+    }
     const projectRequest = this.gitlab.getProject();
     const mergeRequestsRequest = query.mergeRequestIid
       ? this.gitlab
@@ -115,26 +130,25 @@ export class CommentService {
           this.gitlab.listMergeRequestDiscussionDetails(mergeRequest.iid),
           this.gitlab.listMergeRequestNotes(mergeRequest.iid),
         ]);
-        return { mergeRequest, discussions, notes };
+        const inlineNotes = [
+          ...discussions.flatMap((discussion) => discussion.notes),
+          ...notes,
+        ].filter((note) => !note.system && note.position);
+        const [changes, commits] = inlineNotes.length
+          ? await this.loadInlineContext(mergeRequest.iid)
+          : [[], []];
+        return { mergeRequest, discussions, notes, changes, commits };
       },
       { concurrency: this.discussionConcurrency },
     );
-    const createdAfter = query.createdAfter
-      ? dateFromFilter(query.createdAfter, "createdAfter")
-      : undefined;
-    const createdBefore = query.createdBefore
-      ? dateFromFilter(query.createdBefore, "createdBefore")
-      : undefined;
-    if (createdAfter && createdBefore && createdAfter > createdBefore) {
-      throw new Error("createdAfter must be before or equal to createdBefore.");
-    }
-
     const comments = discussions
       .flatMap(
         ({
           mergeRequest,
           discussions: mergeRequestDiscussions,
           notes: mergeRequestNotes,
+          changes,
+          commits,
         }) => [
           ...mergeRequestDiscussions.flatMap((discussion) => {
             const discussionHistory = discussion.notes
@@ -152,12 +166,16 @@ export class CommentService {
                   discussion.id,
                   note,
                   discussionHistory,
+                  changes,
+                  commits,
                 ),
               );
           }),
           ...mergeRequestNotes
             .filter((note) => !note.system)
-            .map((note) => normalizeGeneralNote(mergeRequest, note)),
+            .map((note) =>
+              normalizeGeneralNote(mergeRequest, note, changes, commits),
+            ),
         ],
       )
       .filter((comment) =>
@@ -178,11 +196,27 @@ export class CommentService {
       nextCursor: nextOffset < comments.length ? String(nextOffset) : null,
     };
   }
+
+  private async loadInlineContext(
+    mergeRequestIid: number,
+  ): Promise<[MergeRequestChange[], MergeRequestCommit[]]> {
+    try {
+      return await Promise.all([
+        this.gitlab.getMergeRequestChanges(mergeRequestIid),
+        this.gitlab.listMergeRequestCommits(mergeRequestIid),
+      ]);
+    } catch {
+      // A missing optional context must not hide the review comment itself.
+      return [[], []];
+    }
+  }
 }
 
 function normalizeGeneralNote(
   mergeRequest: MergeRequest,
   note: MergeRequestNote,
+  changes: MergeRequestChange[],
+  commits: MergeRequestCommit[],
 ): NormalizedComment {
   const normalizedNote = normalizeDiscussionHistoryNote(mergeRequest, note);
   return {
@@ -195,6 +229,8 @@ function normalizeGeneralNote(
       webUrl: mergeRequest.web_url,
     },
     discussionHistory: [normalizedNote],
+    codeThatComentIsOn: codeFor(normalizedNote, changes),
+    commitMessage: messageFor(normalizedNote.commitSha, commits),
   };
 }
 
@@ -213,10 +249,13 @@ function normalizeComment(
     position?: DiffPosition;
   },
   discussionHistory: DiscussionHistoryNote[],
+  changes: MergeRequestChange[],
+  commits: MergeRequestCommit[],
 ): NormalizedComment {
+  const normalizedNote = normalizeDiscussionHistoryNote(mergeRequest, note);
   return {
     discussionId,
-    ...normalizeDiscussionHistoryNote(mergeRequest, note),
+    ...normalizedNote,
     mergeRequest: {
       iid: mergeRequest.iid,
       title: mergeRequest.title,
@@ -224,7 +263,59 @@ function normalizeComment(
       webUrl: mergeRequest.web_url,
     },
     discussionHistory,
+    codeThatComentIsOn: codeFor(normalizedNote, changes),
+    commitMessage: messageFor(normalizedNote.commitSha, commits),
   };
+}
+
+function codeFor(
+  note: DiscussionHistoryNote,
+  changes: MergeRequestChange[],
+): string {
+  const change = changes.find(
+    (candidate) =>
+      candidate.new_path === note.location.newPath ||
+      candidate.old_path === note.location.oldPath,
+  );
+  if (!change) return "";
+  return matchingDiffHunk(
+    change.diff,
+    note.location.newLine,
+    note.location.oldLine,
+  );
+}
+
+function matchingDiffHunk(
+  diff: string,
+  newLine: number | null,
+  oldLine: number | null,
+): string {
+  const target = newLine ?? oldLine;
+  if (target === null) return "";
+  const hunks = diff.split(/(?=^@@ )/m);
+  return (
+    hunks.find((hunk) => {
+      const match = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/m.exec(hunk);
+      if (!match) return false;
+      const start = newLine === null ? Number(match[1]) : Number(match[3]);
+      const count = Number(
+        newLine === null ? (match[2] ?? 1) : (match[4] ?? 1),
+      );
+      return target >= start && target < start + count;
+    }) ?? ""
+  );
+}
+
+function messageFor(sha: string | null, commits: MergeRequestCommit[]): string {
+  if (!sha) return "";
+  return (
+    commits.find(
+      (commit) =>
+        commit.id === sha ||
+        commit.id.startsWith(sha) ||
+        sha.startsWith(commit.id),
+    )?.message ?? ""
+  );
 }
 
 function normalizeDiscussionHistoryNote(

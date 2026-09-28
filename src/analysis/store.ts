@@ -100,19 +100,31 @@ export const analyzedCommentInputSchema = z.object({
 
 export type AnalyzedCommentInput = z.input<typeof analyzedCommentInputSchema>;
 
-/** The GitLab fields retained locally before a comment is categorized. */
-export const fetchedCommentInputSchema = analyzedCommentInputSchema.pick({
-  project: true,
-  mergeRequest: true,
-  comment: true,
-});
-
-export type FetchedCommentInput = z.input<typeof fetchedCommentInputSchema>;
-
 export type FetchedCommentSaveResult = {
   saved: number;
   existing: number;
 };
+
+/** The complete format retained for a fetched review comment. */
+export const savedCommentSchema = z.object({
+  commentMessageTexts: z.array(z.string()),
+  codeThatComentIsOn: z.string(),
+  commitMessage: z.string(),
+  fileNewPaht: z.string(),
+});
+
+export type SavedComment = z.infer<typeof savedCommentSchema>;
+
+/** The GitLab fields and compact saved payload retained before categorization. */
+export const fetchedCommentInputSchema = analyzedCommentInputSchema
+  .pick({
+    project: true,
+    mergeRequest: true,
+    comment: true,
+  })
+  .extend({ savedComment: savedCommentSchema.optional() });
+
+export type FetchedCommentInput = z.input<typeof fetchedCommentInputSchema>;
 
 export const analyzedCommentRecordSchema = analyzedCommentInputSchema.extend({
   id: z.string().min(1),
@@ -345,6 +357,8 @@ export class AnalysisStore {
       const now = new Date().toISOString();
 
       for (const input of parsed) {
+        const savedComment =
+          input.savedComment ?? defaultSavedComment(input.comment);
         this.db
           .insert(projects)
           .values({
@@ -454,6 +468,7 @@ export class AnalysisStore {
             oldLine: input.comment.location.oldLine,
             newLine: input.comment.location.newLine,
             commitSha: input.comment.commitSha,
+            savedCommentJson: JSON.stringify(savedComment),
             analysisStatus: "pending",
             createdAt: now,
             updatedAt: now,
@@ -816,4 +831,15 @@ export class AnalysisStore {
     if (value) return value.id;
     throw new Error(`Could not persist ${entity}.`);
   }
+}
+
+function defaultSavedComment(
+  comment: z.output<typeof analyzedCommentInputSchema>["comment"],
+): SavedComment {
+  return {
+    commentMessageTexts: [comment.body],
+    codeThatComentIsOn: "",
+    commitMessage: "",
+    fileNewPaht: comment.location.newPath ?? "",
+  };
 }

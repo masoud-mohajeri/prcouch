@@ -152,12 +152,22 @@ describe("AnalysisStore", () => {
       rationale: _rationale,
       ...fetched
     } = input();
+    const savedComment = {
+      commentMessageTexts: ["Validate the invoice number.", "Fixed."],
+      codeThatComentIsOn: "@@ -17,2 +17,3 @@\n validate(invoice);",
+      commitMessage: "Validate invoice numbers",
+      fileNewPaht: "src/invoice.ts",
+    };
 
     await expect(
-      store.saveFetchedComments([fetched as FetchedCommentInput]),
+      store.saveFetchedComments([
+        { ...fetched, savedComment } as FetchedCommentInput,
+      ]),
     ).resolves.toEqual({ saved: 1, existing: 0 });
     await expect(
-      store.saveFetchedComments([fetched as FetchedCommentInput]),
+      store.saveFetchedComments([
+        { ...fetched, savedComment } as FetchedCommentInput,
+      ]),
     ).resolves.toEqual({ saved: 0, existing: 1 });
     expect(await store.countPendingComments()).toBe(1);
     expect(await store.list()).toEqual([]);
@@ -167,10 +177,14 @@ describe("AnalysisStore", () => {
       expect(
         database
           .prepare(
-            "SELECT analysis_status AS status, body FROM comments WHERE note_id = 45",
+            "SELECT analysis_status AS status, body, saved_comment_json AS savedCommentJson FROM comments WHERE note_id = 45",
           )
           .get(),
-      ).toEqual({ status: "pending", body: "Validate the invoice number." });
+      ).toEqual({
+        status: "pending",
+        body: "Validate the invoice number.",
+        savedCommentJson: JSON.stringify(savedComment),
+      });
     } finally {
       database.close();
     }

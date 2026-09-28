@@ -116,7 +116,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listComments]: tool({
       description:
-        "Retrieve normalized GitLab review discussions and comments, including inline and general merge-request notes, and save newly retrieved comments locally as pending analysis work. For a specific merge request, pass mergeRequestIid. Use this for filtered review-comment requests: each item includes its author, merge request, inline location, commit-SHA context, and full oldest-to-newest note/reply history, including system events. Filter authorName case-insensitively by substring against the author name or username. A commitSha is a diff SHA, not a commit message.",
+        "Retrieve normalized GitLab review discussions and comments, including inline and general merge-request notes, and save newly retrieved comments locally as pending analysis work. For a specific merge request, pass mergeRequestIid. Use this for filtered review-comment requests: each item includes its author, merge request, inline location, commit-SHA context, matching diff hunk and commit message when available, and full oldest-to-newest note/reply history, including system events. Filter authorName case-insensitively by substring against the author name or username.",
       inputSchema: z
         .object({
           authorName: z
@@ -211,6 +211,12 @@ async function saveCommentPage(
         author: comment.author,
         location: comment.location,
         commitSha: comment.commitSha,
+      },
+      savedComment: {
+        commentMessageTexts: comment.discussionHistory.map((note) => note.body),
+        codeThatComentIsOn: comment.codeThatComentIsOn,
+        commitMessage: comment.commitMessage,
+        fileNewPaht: comment.location.newPath ?? "",
       },
     })),
   );

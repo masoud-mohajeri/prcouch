@@ -42,6 +42,34 @@ function createService() {
       return json(mergeRequests[1]);
     if (url.pathname.endsWith("/merge_requests/10/notes")) return json([]);
     if (url.pathname.endsWith("/merge_requests/11/notes")) return json([]);
+    if (url.pathname.endsWith("/merge_requests/10/changes")) {
+      return json({
+        changes: [
+          {
+            old_path: "src/input.ts",
+            new_path: "src/input.ts",
+            diff: "@@ -4,1 +7,2 @@\n-oldValue\n+validatedValue\n+nextValue",
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith("/merge_requests/11/changes")) {
+      return json({
+        changes: [
+          {
+            old_path: "src/legacy.ts",
+            new_path: "src/legacy.ts",
+            diff: "@@ -18,1 +0,0 @@\n-legacyCode();",
+          },
+        ],
+      });
+    }
+    if (url.pathname.endsWith("/merge_requests/10/commits")) {
+      return json([{ id: "head-sha", message: "Validate input" }]);
+    }
+    if (url.pathname.endsWith("/merge_requests/11/commits")) {
+      return json([{ id: "delete-base-sha", message: "Remove legacy code" }]);
+    }
     if (url.pathname.endsWith("/merge_requests/10/discussions")) {
       return json([
         {
@@ -159,6 +187,9 @@ describe("CommentService", () => {
         newLine: 7,
       },
       commitSha: "head-sha",
+      codeThatComentIsOn:
+        "@@ -4,1 +7,2 @@\n-oldValue\n+validatedValue\n+nextValue",
+      commitMessage: "Validate input",
     });
     expect(page.items[1].discussionHistory.map((note) => note.noteId)).toEqual([
       1, 3, 2,
@@ -229,7 +260,7 @@ describe("CommentService", () => {
         "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests/10/notes?per_page=100&page=1",
       ]),
     );
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(6);
   });
 
   it("includes general merge-request notes when no discussions exist", async () => {

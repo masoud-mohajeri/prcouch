@@ -85,6 +85,8 @@ export const comments = sqliteTable(
     oldLine: integer("old_line"),
     newLine: integer("new_line"),
     commitSha: text("commit_sha"),
+    /** The compact, stringified payload used when a review comment is saved. */
+    savedCommentJson: text("saved_comment_json"),
     analysisStatus: text("analysis_status").notNull().default("pending"),
     analysisResultJson: text("analysis_result_json"),
     analyzedAt: text("analyzed_at"),

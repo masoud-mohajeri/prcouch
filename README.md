@@ -83,8 +83,10 @@ status. Inline comments include file and line context and, where GitLab returns
 one, the diff commit SHA.
 
 When the agent retrieves review comments, it saves newly returned comments as
-pending work in the local SQLite database. Categorization then analyzes those
-saved comments with the committed category policy at
+pending work in the local SQLite database. Each row also retains a stringified
+`saved_comment_json` payload containing `commentMessageTexts`,
+`codeThatComentIsOn`, `commitMessage`, and `fileNewPaht`. Categorization then
+analyzes those saved comments with the committed category policy at
 [`config/comment-categories.json`](config/comment-categories.json). Completed
 analyses include an approved category, resolution, and evidence-based rationale:
 
