@@ -183,23 +183,28 @@ export async function runGitLabAgent(
     apiMode === "chat"
       ? provider.chat(modelName)
       : provider.responses(modelName);
+  const userMessage: ModelMessage = { role: "user", content: input };
   const mergeRequestListRequest = getMergeRequestListRequest(input);
   if (mergeRequestListRequest) {
     const client = gitLabClient ?? new GitLabClient(requireGitLabConfig());
-    return listMergeRequestsDirectly(
+    const agentResult = await listMergeRequestsDirectly(
       client,
       mergeRequestListRequest,
       onToolExecution,
     );
+    recordVisibleChatTurn(chatHistory, userMessage, agentResult.text);
+    return agentResult;
   }
   const namedMergeRequestIid = getNamedMergeRequestIid(input);
   if (namedMergeRequestIid && !/\b(?:review )?comments?\b/i.test(input)) {
     const client = gitLabClient ?? new GitLabClient(requireGitLabConfig());
-    return getMergeRequestDirectly(
+    const agentResult = await getMergeRequestDirectly(
       client,
       namedMergeRequestIid,
       onToolExecution,
     );
+    recordVisibleChatTurn(chatHistory, userMessage, agentResult.text);
+    return agentResult;
   }
   if (isCategorizePendingCommentsRequest(input)) {
     const store = new AnalysisStore();
@@ -208,11 +213,13 @@ export async function runGitLabAgent(
         store,
         new CommentCategoryPolicy(),
       ).categorize({ model, modelName, onProgress: onCategorizationProgress });
-      return {
+      const agentResult = {
         text: formatCategorizationResult(result),
         toolCalls: [],
         toolResults: [result],
       };
+      recordVisibleChatTurn(chatHistory, userMessage, agentResult.text);
+      return agentResult;
     } catch (error) {
       if (isServiceError(error)) throw error;
       throw toOpenAIServiceError(error, { baseURL, apiMode });
@@ -221,7 +228,6 @@ export async function runGitLabAgent(
     }
   }
   const initialTool = getInitialToolForInput(input);
-  const userMessage: ModelMessage = { role: "user", content: input };
   const retainedHistory = chatHistory && compactChatHistory(chatHistory);
 
   const tools = createAgentTools({ client: gitLabClient, onToolExecution });
@@ -249,25 +255,30 @@ export async function runGitLabAgent(
     throw toOpenAIServiceError(error, { baseURL, apiMode });
   });
 
-  // The CLI owns this process-local array. Compact it after every completed
-  // turn so large GitLab responses cannot accumulate indefinitely.
-  if (chatHistory) {
-    chatHistory.push(userMessage, ...result.response.messages);
-    chatHistory.splice(
-      0,
-      chatHistory.length,
-      ...compactChatHistory(chatHistory),
-    );
-  }
-
   const toolCalls = uniqueToolCalls(result.steps);
   const toolResults = result.steps.flatMap((step) => step.toolResults);
-
-  return {
+  const agentResult = {
     text: result.text,
     toolCalls,
     toolResults,
   };
+  recordVisibleChatTurn(chatHistory, userMessage, agentResult.text);
+  return agentResult;
+}
+
+/**
+ * Retains the text the user saw, rather than provider-specific tool messages.
+ * This keeps direct retrieval, categorization, and model-driven turns equally
+ * available to follow-up requests while avoiding large raw GitLab payloads.
+ */
+function recordVisibleChatTurn(
+  chatHistory: ModelMessage[] | undefined,
+  userMessage: ModelMessage,
+  responseText: string,
+): void {
+  if (!chatHistory) return;
+  chatHistory.push(userMessage, { role: "assistant", content: responseText });
+  chatHistory.splice(0, chatHistory.length, ...compactChatHistory(chatHistory));
 }
 
 async function listMergeRequestsDirectly(

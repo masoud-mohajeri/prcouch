@@ -80,7 +80,7 @@ describe("agent tools", () => {
     ]);
   });
 
-  it("saves fetched comments as pending analysis work", async () => {
+  it("saves comments fetched by either comment-retrieval tool as pending work", async () => {
     const directory = await mkdtemp(join(tmpdir(), "prcouch-gitlab-tool-"));
     directories.push(directory);
     const store = new AnalysisStore(join(directory, "analytics.sqlite"));
@@ -128,13 +128,24 @@ describe("agent tools", () => {
         return new Response("Not found", { status: 404 });
       },
     );
-    const listComments = createGitLabTools(client, store)[
-      gitLabToolNames.listComments
-    ];
+    const tools = createGitLabTools(client, store);
+    const listComments = tools[gitLabToolNames.listComments];
+    const getDiscussions = tools[gitLabToolNames.getMergeRequestDiscussions];
     if (!listComments.execute)
       throw new Error("list_comments must be executable");
+    if (!getDiscussions.execute)
+      throw new Error("get_merge_request_discussions must be executable");
 
     try {
+      const discussionsResult = await getDiscussions.execute(
+        { mergeRequestIid: 12 },
+        { toolCallId: "discussion-call", messages: [] },
+      );
+      expect(discussionsResult).toMatchObject({
+        persistence: { saved: 1, existing: 0 },
+      });
+      expect(await store.countPendingComments()).toBe(1);
+
       const result = await listComments.execute(
         {
           mergeRequestIid: 12,
@@ -147,7 +158,7 @@ describe("agent tools", () => {
 
       expect(result).toMatchObject({
         total: 1,
-        persistence: { saved: 1, existing: 0 },
+        persistence: { saved: 0, existing: 1 },
       });
       expect(await store.countPendingComments()).toBe(1);
     } finally {

@@ -92,7 +92,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({
       description:
-        "Retrieve compact human discussion summaries for one GitLab merge request. Use this after listing recent merge requests when the user needs each discussion's file path, line, and message text. Pass the project-local IID returned by list_recent_merge_requests, not its database ID. Usernames in GITLAB_INVALID_COMMENT_USERS are excluded.",
+        "Retrieve compact human discussion summaries for one GitLab merge request and save its normalized review comments locally as pending analysis work. Use this after listing recent merge requests when the user needs each discussion's file path, line, and message text. Pass the project-local IID returned by list_recent_merge_requests, not its database ID. Usernames in GITLAB_INVALID_COMMENT_USERS are excluded.",
       inputSchema: z.object({
         mergeRequestIid: z
           .number()
@@ -100,9 +100,19 @@ export function createGitLabTools(
           .positive()
           .describe("Project-local merge request IID"),
       }),
-      execute: async ({ mergeRequestIid }) => ({
-        discussions: await client.listMergeRequestDiscussions(mergeRequestIid),
-      }),
+      execute: async ({ mergeRequestIid }) => {
+        const [discussions, page] = await Promise.all([
+          client.listMergeRequestDiscussions(mergeRequestIid),
+          comments.list({
+            mergeRequestIid,
+            state: "all",
+            includeResolved: true,
+            limit: 100,
+          }),
+        ]);
+        const persistence = await saveCommentPage(analysisStore, page);
+        return { discussions, persistence };
+      },
     }),
     [gitLabToolNames.listComments]: tool({
       description:
@@ -169,32 +179,39 @@ export function createGitLabTools(
         }),
       execute: async (query) => {
         const page = await comments.list(query);
-        const persistence = await analysisStore.saveFetchedComments(
-          page.items.map<FetchedCommentInput>((comment) => ({
-            project: {
-              id: page.project.id,
-              pathWithNamespace: page.project.path_with_namespace,
-              webUrl: page.project.web_url,
-            },
-            mergeRequest: {
-              iid: comment.mergeRequest.iid,
-              title: comment.mergeRequest.title,
-              webUrl: comment.mergeRequest.webUrl,
-            },
-            comment: {
-              discussionId: comment.discussionId,
-              noteId: comment.noteId,
-              body: comment.body,
-              sourceUrl: comment.sourceUrl,
-              createdAt: comment.createdAt,
-              author: comment.author,
-              location: comment.location,
-              commitSha: comment.commitSha,
-            },
-          })),
-        );
+        const persistence = await saveCommentPage(analysisStore, page);
         return { ...page, persistence };
       },
     }),
   };
+}
+
+async function saveCommentPage(
+  analysisStore: AnalysisStore,
+  page: Awaited<ReturnType<CommentService["list"]>>,
+) {
+  return analysisStore.saveFetchedComments(
+    page.items.map<FetchedCommentInput>((comment) => ({
+      project: {
+        id: page.project.id,
+        pathWithNamespace: page.project.path_with_namespace,
+        webUrl: page.project.web_url,
+      },
+      mergeRequest: {
+        iid: comment.mergeRequest.iid,
+        title: comment.mergeRequest.title,
+        webUrl: comment.mergeRequest.webUrl,
+      },
+      comment: {
+        discussionId: comment.discussionId,
+        noteId: comment.noteId,
+        body: comment.body,
+        sourceUrl: comment.sourceUrl,
+        createdAt: comment.createdAt,
+        author: comment.author,
+        location: comment.location,
+        commitSha: comment.commitSha,
+      },
+    })),
+  );
 }

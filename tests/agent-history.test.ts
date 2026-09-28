@@ -62,16 +62,16 @@ describe("runGitLabAgent chat history", () => {
       expect.objectContaining({
         messages: [
           { role: "user", content: "What is the project name?" },
-          firstResponse,
+          { role: "assistant", content: "The project is Acme." },
           { role: "user", content: "How many open comments does it have?" },
         ],
       }),
     );
     expect(history).toEqual([
       { role: "user", content: "What is the project name?" },
-      firstResponse,
+      { role: "assistant", content: "The project is Acme." },
       { role: "user", content: "How many open comments does it have?" },
-      secondResponse,
+      { role: "assistant", content: "It has two open comments." },
     ]);
   });
 
@@ -102,8 +102,10 @@ describe("runGitLabAgent chat history", () => {
       },
     );
 
+    const chatHistory: ModelMessage[] = [];
     const result = await runGitLabAgent("give me list of last merged PRs", {
       gitLabClient: client,
+      chatHistory,
     });
 
     expect(mocks.generateText).not.toHaveBeenCalled();
@@ -111,6 +113,10 @@ describe("runGitLabAgent chat history", () => {
     expect(result.text).toContain("Project: group/project");
     expect(result.text).toContain("Result: 1 merged merge request found.");
     expect(result.text).toContain("!77 — Fix the list");
+    expect(chatHistory).toEqual([
+      { role: "user", content: "give me list of last merged PRs" },
+      { role: "assistant", content: result.text },
+    ]);
   });
 
   it("retrieves a named merge request instead of falling back to a recent list", async () => {
