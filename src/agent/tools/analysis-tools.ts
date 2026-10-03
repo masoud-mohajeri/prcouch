@@ -46,7 +46,7 @@ export function createAnalysisTools(
     }),
     [analysisToolNames.generateCommentReport]: tool({
       description:
-        "Generate a self-contained, offline HTML report from saved analyzed comments. It includes summary counts, category/resolution/author/trend charts, and a sortable, filterable detail table. Optional filters only select saved analyses; the output path is controlled by REPORT_OUTPUT_DIR, never by the caller.",
+        "Generate a self-contained, offline report from saved analyzed comments. It shows the percentage of included comments in each issue category; selecting a category reveals its corresponding comments, resolution, merge request, location, recommended action, rationale, and source. Author data is omitted from the report. Optional filters select saved analyses; commentCreatedAfter/commentCreatedBefore filter review dates while analyzedAfter/analyzedBefore retain their analysis-date meaning. The output path is controlled by REPORT_OUTPUT_DIR, never by the caller.",
       inputSchema: reportFiltersSchema,
       execute: async (filters) => ({
         report: await reportGenerator.generate(filters),

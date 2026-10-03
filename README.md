@@ -116,10 +116,11 @@ npm start -- "Generate an HTML report for saved security comments."
 Ask the agent to generate a self-contained HTML dashboard from saved analyses.
 
 By default, reports are timestamped files in `reports/`. Set
-`REPORT_OUTPUT_DIR` to change the directory. A report includes summary metrics,
-category, resolution, author, and trend charts, plus a sortable and filterable
-comment table. Report files are gitignored because they can contain local review
-data.
+`REPORT_OUTPUT_DIR` to change the directory. A report shows what percentage of
+the included comments belongs to each issue category. Select a category to see
+only its corresponding comments, along with their resolution, merge request,
+location, recommended action, rationale, and source. Author data is omitted.
+Report files are gitignored because they can contain local review data.
 
 ## Configuration
 

@@ -73,7 +73,7 @@ function input(
 }
 
 describe("CommentReportGenerator", () => {
-  it("generates an offline HTML report with charts, controls, and escaped review data", async () => {
+  it("generates an offline Review Health Report with decision-ready charts, controls, and escaped review data", async () => {
     const { store, generator, reportsDirectory } = await fixture();
     await store.upsert(
       input({
@@ -99,6 +99,16 @@ describe("CommentReportGenerator", () => {
         resolution: "needs_discussion",
       }),
     );
+    await store.saveFetchedComments([
+      input({
+        comment: {
+          ...input().comment,
+          noteId: 47,
+          sourceUrl:
+            "https://gitlab.example.test/team/service/-/merge_requests/12#note_47",
+        },
+      }),
+    ]);
 
     const report = await generator.generate();
     const html = await readFile(report.path, "utf8");
@@ -107,10 +117,19 @@ describe("CommentReportGenerator", () => {
     expect(report.recordCount).toBe(2);
     expect(html).toContain("Content-Security-Policy");
     expect(html).toContain("Self-contained offline report");
-    expect(html).toContain("Categories");
-    expect(html).toContain("Resolutions");
-    expect(html).toContain("Comments by author");
-    expect(html).toContain("Analysis trend");
+    expect(html).toContain("Review Health Report");
+    expect(html).toContain("Analysis coverage: 2/3 (67%)");
+    expect(html).toContain("Review dates: 2026-01-02");
+    expect(html).toContain("Last analyzed");
+    expect(html).toContain("Critical / high unresolved");
+    expect(html).toContain("Issue category by severity and resolution");
+    expect(html).toContain("Review activity by comment-created date");
+    expect(html).toContain("Highest-risk merge requests");
+    expect(html).toContain("Recurring affected files");
+    expect(html).toContain("What needs attention");
+    expect(html).toContain("Recommended action");
+    expect(html).toContain("Rationale");
+    expect(html).toContain("critical");
     expect(html.match(/<svg/g)).toHaveLength(4);
     expect(html).toContain('id="comment-filter"');
     expect(html).toContain("data-sort-column");
@@ -127,6 +146,7 @@ describe("CommentReportGenerator", () => {
         comment: {
           ...input().comment,
           noteId: 46,
+          createdAt: "2026-01-05T03:04:05.000Z",
           sourceUrl:
             "https://gitlab.example.test/team/service/-/merge_requests/12#note_46",
           author: { name: "Ben", username: "ben" },
@@ -138,6 +158,8 @@ describe("CommentReportGenerator", () => {
     const filtered = await generator.generate({
       authorName: "ben",
       category: "testing",
+      commentCreatedAfter: "2026-01-03T00:00:00.000Z",
+      commentCreatedBefore: "2026-01-06T00:00:00.000Z",
     });
     const filteredHtml = await readFile(filtered.path, "utf8");
     const empty = await generator.generate({ category: "security" });
@@ -146,6 +168,7 @@ describe("CommentReportGenerator", () => {
     expect(filtered.recordCount).toBe(1);
     expect(filteredHtml).toContain("Ben");
     expect(filteredHtml).not.toContain("Ava");
+    expect(filteredHtml).toContain("Review dates: 2026-01-05");
     expect(empty.recordCount).toBe(0);
     expect(emptyHtml).toContain("No matching analyzed comments.");
     expect(emptyHtml).not.toContain("<svg");
@@ -161,6 +184,14 @@ describe("CommentReportGenerator", () => {
       }),
     ).rejects.toThrow(
       "analyzedAfter must be before or equal to analyzedBefore",
+    );
+    await expect(
+      generator.generate({
+        commentCreatedAfter: "2026-01-03T00:00:00.000Z",
+        commentCreatedBefore: "2026-01-02T00:00:00.000Z",
+      }),
+    ).rejects.toThrow(
+      "commentCreatedAfter must be before or equal to commentCreatedBefore",
     );
     expect(getReportDirectory({ REPORT_OUTPUT_DIR: "custom/reports" })).toMatch(
       /custom\/reports$/,

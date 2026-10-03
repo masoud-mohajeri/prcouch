@@ -133,6 +133,11 @@ export const analyzedCommentRecordSchema = analyzedCommentInputSchema.extend({
 
 export type AnalyzedCommentRecord = z.infer<typeof analyzedCommentRecordSchema>;
 
+export type AnalysisCoverage = {
+  totalComments: number;
+  completedComments: number;
+};
+
 export function getAnalysisStorePath(env = process.env): string {
   const configuredPath = env.ANALYSIS_STORE_PATH?.trim();
   return resolve(configuredPath || "data/analytics.sqlite");
@@ -231,6 +236,20 @@ export class AnalysisStore {
         analyzedAt: row.analyzedAt,
       }),
     );
+  }
+
+  /** Counts every saved review comment so reports can disclose analysis coverage. */
+  async getCoverage(): Promise<AnalysisCoverage> {
+    const rows = this.db
+      .select({ analysisStatus: comments.analysisStatus })
+      .from(comments)
+      .all();
+    return {
+      totalComments: rows.length,
+      completedComments: rows.filter(
+        (row) => row.analysisStatus === "completed",
+      ).length,
+    };
   }
 
   /** Synchronizes the committed policy into SQLite before batch classification. */
