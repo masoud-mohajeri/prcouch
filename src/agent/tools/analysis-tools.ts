@@ -16,6 +16,7 @@ export const analysisToolNames = {
   getCommentCategories: "get_comment_categories",
   saveAnalyzedComment: "save_analyzed_comment",
   generateCommentReport: "generate_comment_report",
+  clearAnalysisData: "clear_analysis_data",
 } as const;
 
 /** Tools for categorizing, storing, and reporting on saved comment analyses. */
@@ -51,6 +52,12 @@ export function createAnalysisTools(
       execute: async (filters) => ({
         report: await reportGenerator.generate(filters),
       }),
+    }),
+    [analysisToolNames.clearAnalysisData]: tool({
+      description:
+        "Permanently remove every saved local analysis datum, including fetched comments, analyses, categories, batches, projects, merge requests, discussions, and sync runs, so the next fetch starts a fresh analysis session. SQLite schema and migration history are retained. This action cannot be undone. Invoke only after the user explicitly confirms deletion in a separate message.",
+      inputSchema: z.object({}),
+      execute: async () => ({ deleted: await analysisStore.clearAllData() }),
     }),
   };
 }

@@ -32,6 +32,11 @@ Fetched review comments are saved locally as pending analysis work. Analyze
 saved comments only after they have been fetched; use the allowed comment
 categories and an evidence-based rationale for any saved analysis.
 
+Clearing saved local analysis data is irreversible. If asked to clear it, first
+state exactly what will be deleted and ask for confirmation. Invoke
+clear_analysis_data only when the user explicitly confirms in a separate
+message; never infer confirmation from the initial request.
+
 If earlier tool output is no longer available and the answer depends on it,
 retrieve the GitLab data again. Do not repeat an identical tool call in one
 response.

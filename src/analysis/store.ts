@@ -138,6 +138,21 @@ export type AnalysisCoverage = {
   completedComments: number;
 };
 
+const analysisDataTablesCleanupList = [
+  "comment_analytics",
+  "comments",
+  "discussions",
+  "sync_runs",
+  "merge_requests",
+  "projects",
+  "analysis_batches",
+] as const;
+
+export type ClearedAnalysisData = Record<
+  (typeof analysisDataTablesCleanupList)[number],
+  number
+>;
+
 export function getAnalysisStorePath(env = process.env): string {
   const configuredPath = env.ANALYSIS_STORE_PATH?.trim();
   return resolve(configuredPath || "data/analytics.sqlite");
@@ -250,6 +265,38 @@ export class AnalysisStore {
         (row) => row.analysisStatus === "completed",
       ).length,
     };
+  }
+
+  /**
+   * Removes every persisted analysis datum while retaining the SQLite schema
+   * and migration history. The next retrieval begins a fresh analysis session.
+   */
+  async clearAllData(): Promise<ClearedAnalysisData> {
+    return this.sqlite.transaction(() => {
+      const deleted = Object.fromEntries(
+        analysisDataTablesCleanupList.map((table) => {
+          const row = this.sqlite
+            .prepare(`SELECT COUNT(*) AS count FROM ${table}`)
+            .get() as { count: number };
+          return [table, row.count];
+        }),
+      ) as ClearedAnalysisData;
+
+      for (const table of analysisDataTablesCleanupList)
+        this.sqlite.prepare(`DELETE FROM ${table}`).run();
+
+      // Reset generated record IDs too, so this is indistinguishable from a
+      // newly initialized analysis database without losing migration history.
+      this.sqlite
+        .prepare(
+          `DELETE FROM sqlite_sequence WHERE name IN (${analysisDataTablesCleanupList
+            .map(() => "?")
+            .join(", ")})`,
+        )
+        .run(...analysisDataTablesCleanupList);
+
+      return deleted;
+    })();
   }
 
   /** Synchronizes the committed policy into SQLite before batch classification. */
