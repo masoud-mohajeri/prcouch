@@ -380,6 +380,13 @@ export async function runGitLabAgent(
     },
     // One list call plus up to 100 discussion calls for the largest allowed request.
     stopWhen: stepCountIs(105),
+    // The AI SDK only emits OpenTelemetry spans when explicitly enabled. The
+    // active provider decides whether those spans are exported (e.g. Langfuse
+    // in the evaluation runner).
+    experimental_telemetry: {
+      isEnabled: true,
+      functionId: "gitlab-agent",
+    },
   }).catch((error: unknown) => {
     // A tool may surface its own GitLab integration error. Do not relabel it
     // as an OpenAI failure merely because the agent loop was in progress.

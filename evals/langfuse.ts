@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { LangfuseClient } from "@langfuse/client";
 import { LangfuseSpanProcessor } from "@langfuse/otel";
+import { setActiveTraceIO, startActiveObservation } from "@langfuse/tracing";
 import { NodeSDK } from "@opentelemetry/sdk-node";
 
 import { cases, type EvalInput, type EvalTarget } from "./cases.js";
@@ -30,13 +31,30 @@ try {
     })),
     // This experiment supplies only the local data declared above; Langfuse's
     // task type also supports remote dataset items whose input is unknown.
-    task: ({ input }) => executeEvalCase(input as EvalInput),
+    task: ({ input }) => {
+      const evalInput = input as EvalInput;
+      return startActiveObservation(
+        "gitlab-agent-eval",
+        async (observation) => {
+          observation.update({
+            input: evalInput,
+            metadata: { fixture: evalInput.gitLabFixture },
+          });
+          const output = await executeEvalCase(evalInput);
+          observation.update({ output });
+          setActiveTraceIO({ input: evalInput, output });
+          return output;
+        },
+        { asType: "agent" },
+      );
+    },
     evaluators: langfuseEvaluators,
     maxConcurrency: 1,
   });
 
   console.log(await result.format({ includeItemResults: true }));
 } finally {
+  await langfuse.flush();
   await otelSdk.shutdown();
 }
 
