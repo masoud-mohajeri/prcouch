@@ -30,13 +30,13 @@ export function createGitLabTools(
   return {
     [gitLabToolNames.getProject]: tool({
       description:
-        "Get canonical metadata for the configured GitLab project. Use this when asked for the project name; the returned name is its display name, while path_with_namespace is its stable path.",
+        "Get metadata for the configured GitLab project. Use when project identity or metadata is needed. name is the human-readable display name; path_with_namespace is the stable project path.",
       inputSchema: z.object({}),
       execute: async () => ({ project: await client.getProject() }),
     }),
     [gitLabToolNames.getMergeRequest]: tool({
       description:
-        "Retrieve metadata for one GitLab merge request by its project-local IID. Use this when the user names a specific merge request such as !5896.",
+        "Get one GitLab merge request by its project-local IID, for example 5896 for !5896. Use when the user refers to a specific merge request or when detailed metadata for one merge request is required. Do not pass the GitLab database ID.",
       inputSchema: z.object({
         mergeRequestIid: z
           .number()
@@ -52,7 +52,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listRecentMergeRequests]: tool({
       description:
-        "List the most recently updated GitLab merge requests in the configured project, optionally limited to one author's username. Use this before retrieving their comments.",
+        "List merge requests ordered by most recently updated. Supports filtering by state and author and a limit from 1-100. Use to discover or select merge requests when the user has not provided a specific IID, especially before retrieving comments or discussions.",
       inputSchema: z.object({
         limit: z
           .number()
@@ -96,7 +96,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.getMergeRequestDiscussions]: tool({
       description:
-        "Retrieve compact human discussion summaries for one GitLab merge request and save its normalized review comments locally as pending analysis work. Use this after listing recent merge requests when the user needs each discussion's file path, line, and message text. Pass the project-local IID returned by list_recent_merge_requests, not its database ID. Usernames in GITLAB_INVALID_COMMENT_USERS are excluded.",
+        "Get human review discussions for one merge request by project-local IID and save normalized review comments as pending analysis work. Returns compact discussion summaries including file path, line, and message text when available. Use when all review discussions for a known merge request are needed. Excludes users configured in GITLAB_INVALID_COMMENT_USERS. Do not pass the GitLab database ID.",
       inputSchema: z.object({
         mergeRequestIid: z
           .number()
@@ -120,7 +120,7 @@ export function createGitLabTools(
     }),
     [gitLabToolNames.listComments]: tool({
       description:
-        "Retrieve normalized GitLab review discussions and comments, including inline and general merge-request notes, and save newly retrieved comments locally as pending analysis work. For a specific merge request, pass mergeRequestIid. Use this for filtered review-comment requests: each item includes its author, merge request, inline location, commit-SHA context, matching diff hunk and commit message when available, and full oldest-to-newest note/reply history, including system events. Filter authorName case-insensitively by substring against the author name or username.",
+        "Retrieve normalized GitLab merge-request comments and review discussions with filtering and pagination, and save newly fetched comments as pending analysis work. Use this as the primary tool for searching or filtering review comments across merge requests or within a specific merge request. Supports filters such as author, date, resolution status, merge request, and other comment attributes. For one merge request, pass its project-local IID as mergeRequestIid. Each result may include author, merge request, inline file/line location, commit context, matching diff hunk, commit message, and the complete oldest-to-newest discussion history including replies and system events. authorName performs a case-insensitive substring match against both author name and username.",
       inputSchema: z
         .object({
           authorName: z
