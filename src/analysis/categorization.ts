@@ -65,11 +65,7 @@ export class PendingCommentCategorizer {
 
     while (true) {
       const comments = await this.store.listPendingComments(BATCH_SIZE);
-      if (
-        !comments.length ||
-        comments.every((comment) => comment.analysisError)
-      )
-        break;
+      if (!comments.length) break;
 
       const batchId = await this.store.createAnalysisBatch(modelName);
       const messages = buildCategorizationMessages(categories, comments);
@@ -109,7 +105,10 @@ export class PendingCommentCategorizer {
           1,
           comments.map((comment) => comment.id),
         );
-        continue;
+        // Leave this batch pending for a later explicit retry. Continuing here
+        // would send every remaining batch after a provider outage or quota
+        // error, needlessly exhausting quota and obscuring the root cause.
+        break;
       }
 
       processed += assignments.length;
