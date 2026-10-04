@@ -1,7 +1,9 @@
-import type { EvalTarget } from "./cases.js";
+import type { Evaluator } from "@langfuse/client";
+
+import type { EvalInput, EvalTarget } from "./cases.js";
 import type { EvalOutput } from "./executor.js";
 
-/** Named, deterministic scorers suitable for Laminar's `evaluators` option. */
+/** Named, deterministic scorers shared by the local runner and Langfuse. */
 export const evaluators = {
   toolSequence: (output: EvalOutput, target?: EvalTarget) =>
     Number(Boolean(target && sameArray(output.toolCalls, target.toolSequence))),
@@ -23,6 +25,21 @@ export const evaluators = {
     );
   },
 };
+
+export const langfuseEvaluators: Evaluator<EvalInput, EvalTarget>[] = [
+  async ({ output, expectedOutput }) => ({
+    name: "toolSequence",
+    value: evaluators.toolSequence(output as EvalOutput, expectedOutput),
+  }),
+  async ({ output, expectedOutput }) => ({
+    name: "gitLabRequests",
+    value: evaluators.gitLabRequests(output as EvalOutput, expectedOutput),
+  }),
+  async ({ output, expectedOutput }) => ({
+    name: "answerCoverage",
+    value: evaluators.answerCoverage(output as EvalOutput, expectedOutput),
+  }),
+];
 
 export function score(output: EvalOutput, target: EvalTarget) {
   return Object.fromEntries(

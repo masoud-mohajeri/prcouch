@@ -23,8 +23,7 @@ src/
 - A read-only GitLab token (`read_api` or fine-grained **Merge Request: Read**
   permission) that can list the project to analyze
 
-Docker Desktop with Docker Compose v2 is only required for self-hosted Laminar
-evaluation tracing.
+Langfuse credentials are only required when exporting live evaluation traces.
 
 ## Quick start
 
@@ -142,7 +141,7 @@ credentials, these settings are available:
 | `ANALYSIS_STORE_PATH`          | Changes the local SQLite database path.                                                     |
 | `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy.                                              |
 | `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
-| `LMNR_*`                       | Configures self-hosted Laminar evaluation tracing.                                          |
+| `LANGFUSE_*`                   | Configures Langfuse evaluation tracing.                                                     |
 
 ## Tests and evals
 
@@ -156,32 +155,41 @@ The test suite includes a full fixture-backed review-analysis flow and report
 generation. The GitLab golden eval injects fixture responses, so it does not
 call a real GitLab instance or require a GitLab token.
 
-## Self-hosted Laminar
+## Langfuse evaluation tracing
 
-Start the local Laminar stack:
-
-```bash
-npm run laminar:up
-```
-
-The command clones Laminar's official Compose configuration into the ignored
-`.laminar-stack/` directory and starts it. Open <http://localhost:5667>, create
-a project and API key, then add `LMNR_PROJECT_API_KEY` to `.env`. The supplied
-default ports are 8000 (HTTP), 8001 (gRPC), and 5667 (UI).
-
-Send the golden eval's traces and scores to that local project:
+To run Langfuse locally, copy the service configuration and replace every
+placeholder with a strong secret. `DATABASE_URL` must use the same password as
+`POSTGRES_PASSWORD`; both Langfuse S3 secret settings must use
+`MINIO_ROOT_PASSWORD`. `ENCRYPTION_KEY` must be exactly 64 hexadecimal
+characters (generate it with `openssl rand -hex 32`).
 
 ```bash
-npm run evals:laminar
+cp .langfuse.env.example .langfuse.env
+npm run langfuse:up
 ```
 
-Useful stack commands:
+Open <http://localhost:4000>, create a user, organization, and project, then
+create a project API key pair in **Settings → API Keys**. Add that pair to the
+agent's `.env` along with the local Langfuse URL:
+
+```dotenv
+LANGFUSE_BASE_URL=http://localhost:4000
+LANGFUSE_PUBLIC_KEY=...
+LANGFUSE_SECRET_KEY=...
+```
+
+Use `npm run langfuse:logs` to follow startup and `npm run langfuse:down` to
+stop the local services. The named Docker volumes retain Langfuse data after a
+normal shutdown.
+
+Send the golden eval's traces and deterministic scores to Langfuse:
 
 ```bash
-npm run laminar:logs
-npm run laminar:down
-npm run laminar:update
+npm run evals:langfuse
 ```
+
+The eval uses the committed local dataset, so no dataset bootstrap is needed.
+Results and task traces are available in Langfuse's Experiments view.
 
 ## Production notes
 

@@ -1,5 +1,6 @@
 node_modules/
 .env
+.langfuse.env
 coverage/
 dist/
 .laminar-stack/

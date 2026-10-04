@@ -1,5 +1,5 @@
 /**
- * This is a Laminar-compatible evaluation dataset: each row separates the
+ * This is a Langfuse-compatible evaluation dataset: each row separates the
  * executor input (`data`) from its expected outcome (`target`).
  */
 export type EvalInput = {

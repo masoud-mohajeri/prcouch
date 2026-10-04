@@ -8,7 +8,8 @@ export type EvalOutput = Pick<AgentResult, "text" | "toolCalls"> & {
 
 /**
  * A pure(ish) executor: it accepts one dataset row's data and returns structured
- * output. Laminar can pass this function directly to `evaluate` in the future.
+ * output. Langfuse passes this function to its experiment runner as a thin
+ * adapter around each dataset item.
  */
 export async function executeEvalCase(input: EvalInput): Promise<EvalOutput> {
   const { client, requests } = createGitLabFixture(input.gitLabFixture);
