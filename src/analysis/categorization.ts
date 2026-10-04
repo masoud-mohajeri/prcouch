@@ -65,7 +65,10 @@ export class PendingCommentCategorizer {
 
     while (true) {
       const comments = await this.store.listPendingComments(BATCH_SIZE);
-      if (!comments.length || comments.every((comment) => comment.analysisError))
+      if (
+        !comments.length ||
+        comments.every((comment) => comment.analysisError)
+      )
         break;
 
       const batchId = await this.store.createAnalysisBatch(modelName);

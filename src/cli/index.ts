@@ -1,10 +1,10 @@
 import "dotenv/config";
 
-import { log } from "@clack/prompts";
-
 import { runChatSession } from "./chat-session.js";
+import { installProcessWarningLogger, writeCliLog } from "./logging.js";
 
 const terminalUi = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+installProcessWarningLogger(terminalUi);
 
 if (!process.env.OPENAI_API_KEY) {
   showError(
@@ -22,9 +22,5 @@ if (!terminalUi && !argumentInput) {
 await runChatSession({ initialInput: argumentInput, terminalUi });
 
 function showError(message: string): void {
-  if (terminalUi) {
-    log.error(message);
-  } else {
-    console.error(message);
-  }
+  writeCliLog("error", message, terminalUi);
 }

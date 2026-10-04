@@ -2,7 +2,6 @@ import {
   cancel,
   intro,
   isCancel,
-  log,
   outro,
   select,
   spinner,
@@ -17,6 +16,7 @@ import {
 } from "../gitlab/client.js";
 import { formatCliError } from "./error.js";
 import { createCategorizationProgressReporter } from "./categorization-progress.js";
+import { writeCliLog } from "./logging.js";
 import { createToolActivityReporter } from "./tool-activity.js";
 
 export type ChatSessionOptions = {
@@ -110,7 +110,11 @@ async function selectGitLabProject(
     activity.stop("GitLab projects loaded");
 
     if (!projects.length) {
-      log.error("No GitLab projects are available to this token.");
+      writeCliLog(
+        "error",
+        "No GitLab projects are available to this token.",
+        terminalUi,
+      );
       return undefined;
     }
 
@@ -157,11 +161,7 @@ async function getInput(): Promise<string | undefined> {
 }
 
 function showError(message: string, terminalUi: boolean): void {
-  if (terminalUi) {
-    log.error(message);
-  } else {
-    console.error(message);
-  }
+  writeCliLog("error", message, terminalUi);
 }
 
 function formatToolCalls(toolCalls: string[]): string {

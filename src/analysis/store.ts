@@ -363,48 +363,55 @@ export class AnalysisStore {
   }
 
   async listPendingComments(limit = 10): Promise<PendingComment[]> {
-    return this.db
-      .select({
-        id: comments.id,
-        body: comments.body,
-        analysisError: comments.analysisError,
-        authorName: comments.authorName,
-        authorUsername: comments.authorUsername,
-        mergeRequestIid: mergeRequests.iid,
-        mergeRequestTitle: mergeRequests.title,
-        oldPath: comments.oldPath,
-        newPath: comments.newPath,
-        oldLine: comments.oldLine,
-        newLine: comments.newLine,
-      })
-      .from(comments)
-      .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
-      .where(eq(comments.analysisStatus, "pending"))
-      // Continue untried work after a failed batch; failed rows remain
-      // retryable but must not repeatedly block the rest of the queue.
-      .orderBy(
-        asc(sql`CASE WHEN ${comments.analysisError} IS NULL THEN 0 ELSE 1 END`),
-        desc(comments.commentCreatedAt),
-        desc(comments.id),
-      )
-      .limit(limit)
-      .all()
-      .map((comment) => ({
-        id: comment.id,
-        body: comment.body,
-        analysisError: comment.analysisError,
-        author: { name: comment.authorName, username: comment.authorUsername },
-        mergeRequest: {
-          iid: comment.mergeRequestIid,
-          title: comment.mergeRequestTitle,
-        },
-        location: {
-          oldPath: comment.oldPath,
-          newPath: comment.newPath,
-          oldLine: comment.oldLine,
-          newLine: comment.newLine,
-        },
-      }));
+    return (
+      this.db
+        .select({
+          id: comments.id,
+          body: comments.body,
+          analysisError: comments.analysisError,
+          authorName: comments.authorName,
+          authorUsername: comments.authorUsername,
+          mergeRequestIid: mergeRequests.iid,
+          mergeRequestTitle: mergeRequests.title,
+          oldPath: comments.oldPath,
+          newPath: comments.newPath,
+          oldLine: comments.oldLine,
+          newLine: comments.newLine,
+        })
+        .from(comments)
+        .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
+        .where(eq(comments.analysisStatus, "pending"))
+        // Continue untried work after a failed batch; failed rows remain
+        // retryable but must not repeatedly block the rest of the queue.
+        .orderBy(
+          asc(
+            sql`CASE WHEN ${comments.analysisError} IS NULL THEN 0 ELSE 1 END`,
+          ),
+          desc(comments.commentCreatedAt),
+          desc(comments.id),
+        )
+        .limit(limit)
+        .all()
+        .map((comment) => ({
+          id: comment.id,
+          body: comment.body,
+          analysisError: comment.analysisError,
+          author: {
+            name: comment.authorName,
+            username: comment.authorUsername,
+          },
+          mergeRequest: {
+            iid: comment.mergeRequestIid,
+            title: comment.mergeRequestTitle,
+          },
+          location: {
+            oldPath: comment.oldPath,
+            newPath: comment.newPath,
+            oldLine: comment.oldLine,
+            newLine: comment.newLine,
+          },
+        }))
+    );
   }
 
   async countPendingComments(): Promise<number> {
