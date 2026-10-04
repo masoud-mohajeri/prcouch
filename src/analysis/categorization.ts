@@ -27,6 +27,9 @@ export type CategorizationProgressEvent =
 export type CategorizationResult = {
   processed: number;
   remaining: number;
+  failed: number;
+  recoveredBatches: number;
+  lastError?: string;
   categoryCounts: Record<string, number>;
 };
 
@@ -47,62 +50,84 @@ export class PendingCommentCategorizer {
     onProgress?: (event: CategorizationProgressEvent) => void;
   }): Promise<CategorizationResult> {
     await this.store.syncCategories(await this.categoryPolicy.list());
-    const [categories, comments, total] = await Promise.all([
+    const [categories, total, recoveredBatches] = await Promise.all([
       this.store.listStoredCategories(),
-      this.store.listPendingComments(BATCH_SIZE),
       this.store.countPendingComments(),
+      this.store.recoverInterruptedAnalysisBatches(),
     ]);
     if (!categories.length)
       throw new Error("No active SQLite comment categories are available.");
     onProgress?.({ type: "loaded", total });
-    if (!comments.length) {
-      return { processed: 0, remaining: 0, categoryCounts: {} };
-    }
+    let processed = 0;
+    let failed = 0;
+    let lastError: string | undefined;
+    const categoryCounts: Record<string, number> = {};
 
-    const batchId = await this.store.createAnalysisBatch(modelName);
-    const messages = buildCategorizationMessages(categories, comments);
-    let lastError: unknown;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
-      try {
-        const result = await generateObject({
-          model,
-          messages,
-          schema: assignmentResponseSchema,
-          temperature: 0,
-        });
-        const assignments = validateAssignments(
-          result.object.assignments,
-          comments,
-          categories,
-        );
-        await this.store.completeCategorizationBatch(
-          batchId,
-          assignments,
-          categories,
-          modelName,
-        );
-        assignments.forEach((_, index) =>
-          onProgress?.({
-            type: "persisted",
-            completed: index + 1,
-            total,
-          }),
-        );
-        return {
-          processed: assignments.length,
-          remaining: await this.store.countPendingComments(),
-          categoryCounts: countCategories(assignments),
-        };
-      } catch (error) {
-        lastError = error;
+    while (true) {
+      const comments = await this.store.listPendingComments(BATCH_SIZE);
+      if (!comments.length || comments.every((comment) => comment.analysisError))
+        break;
+
+      const batchId = await this.store.createAnalysisBatch(modelName);
+      const messages = buildCategorizationMessages(categories, comments);
+      let batchError: unknown;
+      let assignments: CategoryAssignment[] | undefined;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        try {
+          const result = await generateObject({
+            model,
+            messages,
+            schema: assignmentResponseSchema,
+            temperature: 0,
+          });
+          assignments = validateAssignments(
+            result.object.assignments,
+            comments,
+            categories,
+          );
+          await this.store.completeCategorizationBatch(
+            batchId,
+            assignments,
+            categories,
+            modelName,
+          );
+          break;
+        } catch (error) {
+          batchError = error;
+        }
       }
+
+      if (!assignments) {
+        lastError = errorMessage(batchError);
+        failed += comments.length;
+        await this.store.failAnalysisBatch(
+          batchId,
+          lastError,
+          1,
+          comments.map((comment) => comment.id),
+        );
+        continue;
+      }
+
+      processed += assignments.length;
+      mergeCategoryCounts(categoryCounts, countCategories(assignments));
+      assignments.forEach((_, index) =>
+        onProgress?.({
+          type: "persisted",
+          completed: processed - assignments.length + index + 1,
+          total,
+        }),
+      );
     }
 
-    const message = errorMessage(lastError);
-    await this.store.failAnalysisBatch(batchId, message, 1);
-    throw new Error(
-      `Could not categorize pending comments after one retry: ${message}`,
-    );
+    return {
+      processed,
+      remaining: await this.store.countPendingComments(),
+      failed,
+      recoveredBatches,
+      ...(lastError ? { lastError } : {}),
+      categoryCounts,
+    };
   }
 }
 
@@ -181,6 +206,14 @@ function countCategories(
     counts[assignment.categoryId] = (counts[assignment.categoryId] ?? 0) + 1;
     return counts;
   }, {});
+}
+
+function mergeCategoryCounts(
+  target: Record<string, number>,
+  source: Record<string, number>,
+): void {
+  for (const [category, count] of Object.entries(source))
+    target[category] = (target[category] ?? 0) + count;
 }
 
 function errorMessage(error: unknown): string {

@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
-import { and, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { z } from "zod";
@@ -21,6 +21,8 @@ import type { CommentCategory } from "./category-policy.js";
 export type PendingComment = {
   id: number;
   body: string;
+  /** A previous batch failed; retain this internally so fresh work proceeds first. */
+  analysisError: string | null;
   author: { name: string; username: string };
   mergeRequest: { iid: number; title: string };
   location: {
@@ -365,6 +367,7 @@ export class AnalysisStore {
       .select({
         id: comments.id,
         body: comments.body,
+        analysisError: comments.analysisError,
         authorName: comments.authorName,
         authorUsername: comments.authorUsername,
         mergeRequestIid: mergeRequests.iid,
@@ -377,12 +380,19 @@ export class AnalysisStore {
       .from(comments)
       .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
       .where(eq(comments.analysisStatus, "pending"))
-      .orderBy(desc(comments.commentCreatedAt), desc(comments.id))
+      // Continue untried work after a failed batch; failed rows remain
+      // retryable but must not repeatedly block the rest of the queue.
+      .orderBy(
+        asc(sql`CASE WHEN ${comments.analysisError} IS NULL THEN 0 ELSE 1 END`),
+        desc(comments.commentCreatedAt),
+        desc(comments.id),
+      )
       .limit(limit)
       .all()
       .map((comment) => ({
         id: comment.id,
         body: comment.body,
+        analysisError: comment.analysisError,
         author: { name: comment.authorName, username: comment.authorUsername },
         mergeRequest: {
           iid: comment.mergeRequestIid,
@@ -569,19 +579,58 @@ export class AnalysisStore {
     batchId: number,
     error: string,
     retryCount: number,
+    commentIds: number[],
   ): Promise<void> {
     const now = new Date().toISOString();
-    this.db
-      .update(analysisBatches)
-      .set({
-        status: "failed",
-        error,
-        retryCount,
-        completedAt: now,
-        updatedAt: now,
-      })
-      .where(eq(analysisBatches.id, batchId))
-      .run();
+    this.sqlite.transaction(() => {
+      this.db
+        .update(analysisBatches)
+        .set({
+          status: "failed",
+          error,
+          retryCount,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(analysisBatches.id, batchId))
+        .run();
+      for (const commentId of commentIds) {
+        this.db
+          .update(comments)
+          .set({ analysisError: error, updatedAt: now })
+          .where(
+            and(
+              eq(comments.id, commentId),
+              eq(comments.analysisStatus, "pending"),
+            ),
+          )
+          .run();
+      }
+    })();
+  }
+
+  /**
+   * A process can stop after creating a batch but before it completes it.
+   * Comments are still pending, so recording the interrupted batch as failed
+   * makes the next run auditable without blocking its retry.
+   */
+  async recoverInterruptedAnalysisBatches(): Promise<number> {
+    const now = new Date().toISOString();
+    const error =
+      "Categorization was interrupted before completion; pending comments are retryable.";
+    return this.sqlite.transaction(() => {
+      const result = this.db
+        .update(analysisBatches)
+        .set({
+          status: "failed",
+          error,
+          completedAt: now,
+          updatedAt: now,
+        })
+        .where(eq(analysisBatches.status, "running"))
+        .run();
+      return result.changes;
+    })();
   }
 
   async completeCategorizationBatch(

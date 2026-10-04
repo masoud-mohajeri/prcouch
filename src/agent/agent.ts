@@ -638,15 +638,28 @@ function uniqueToolCalls(
 function formatCategorizationResult({
   processed,
   remaining,
+  failed,
+  recoveredBatches,
+  lastError,
   categoryCounts,
 }: {
   processed: number;
   remaining: number;
+  failed: number;
+  recoveredBatches: number;
+  lastError?: string;
   categoryCounts: Record<string, number>;
 }): string {
-  if (!processed) return "No pending comments are available to categorize.";
+  if (!processed && !remaining)
+    return "No pending comments are available to categorize.";
   const categories = Object.entries(categoryCounts)
     .map(([category, count]) => `${category}: ${count}`)
     .join(", ");
-  return `Categorized ${processed} pending comment${processed === 1 ? "" : "s"}. Categories: ${categories}. Remaining pending: ${remaining}.`;
+  const recovered = recoveredBatches
+    ? ` Recovered ${recoveredBatches} interrupted batch${recoveredBatches === 1 ? "" : "es"}.`
+    : "";
+  const failures = failed
+    ? ` ${failed} comment${failed === 1 ? " remains" : "s remain"} pending after a failed batch${lastError ? `: ${lastError}` : ""}.`
+    : "";
+  return `Categorized ${processed} pending comment${processed === 1 ? "" : "s"}.${categories ? ` Categories: ${categories}.` : ""} Remaining pending: ${remaining}.${recovered}${failures}`;
 }
