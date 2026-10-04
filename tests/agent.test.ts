@@ -4,19 +4,14 @@ import {
   getMergeRequestListRequest,
   getInitialToolForInput,
   getNamedMergeRequestIid,
+  getRecentMergeRequestCommentRequest,
   isCategorizePendingCommentsRequest,
 } from "../src/agent/agent.js";
 
 describe("getInitialToolForInput", () => {
   it.each([
-    [
-      "Show me the review comments on the last 2 PRs.",
-      "list_recent_merge_requests",
-    ],
-    [
-      "List recent review comments in merge requests.",
-      "list_recent_merge_requests",
-    ],
+    ["Show me the review comments on the last 2 PRs.", "list_comments"],
+    ["List recent review comments in merge requests.", "list_comments"],
     ["List unresolved review comments.", "list_comments"],
     ["List unresolved review comments for PR !5896", "list_comments"],
     ["What is the configured project name?", "get_project"],
@@ -67,5 +62,16 @@ describe("getInitialToolForInput", () => {
       getMergeRequestListRequest("give me infos about PR !5896"),
     ).toBeUndefined();
     expect(getNamedMergeRequestIid("give me infos about PR !5896")).toBe(5896);
+  });
+
+  it("parses bounded comment retrieval across recent merge requests", () => {
+    expect(
+      getRecentMergeRequestCommentRequest(
+        "get all the comments on last 100 merged PRs in the project",
+      ),
+    ).toEqual({ limit: 100, state: "merged" });
+    expect(
+      getRecentMergeRequestCommentRequest("get comments for PR !5896"),
+    ).toBeUndefined();
   });
 });

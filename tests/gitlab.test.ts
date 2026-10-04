@@ -74,11 +74,72 @@ describe("GitLabClient", () => {
       { iid: 12 },
     ]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=all&order_by=updated_at&sort=desc&per_page=7",
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=all&order_by=updated_at&sort=desc&per_page=7&page=1",
       expect.objectContaining({
         headers: expect.objectContaining({ "PRIVATE-TOKEN": "secret" }),
       }),
     );
+  });
+
+  it("follows pagination headers while fulfilling a merge-request limit", async () => {
+    const firstPage = Array.from({ length: 50 }, (_, index) => ({
+      iid: 200 - index,
+    }));
+    const secondPage = Array.from({ length: 50 }, (_, index) => ({
+      iid: 150 - index,
+    }));
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify(firstPage), {
+          headers: { "x-next-page": "2" },
+        }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify(secondPage)));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(
+      client.listRecentMergeRequestsWithMetadata(100, "merged"),
+    ).resolves.toMatchObject({
+      retrieval: {
+        requestedLimit: 100,
+        returnedCount: 100,
+        pageCount: 2,
+        orderBy: "merged_at",
+        usedOrderByFallback: false,
+      },
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=merged&order_by=merged_at&sort=desc&per_page=50&page=1",
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=merged&order_by=merged_at&sort=desc&per_page=50&page=2",
+    ]);
+  });
+
+  it("falls back to update ordering when merge-time ordering is unsupported", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response("Unsupported order", {
+          status: 400,
+          statusText: "Bad Request",
+        }),
+      )
+      .mockResolvedValueOnce(new Response(JSON.stringify([{ iid: 12 }])));
+    const client = new GitLabClient(config, fetchMock);
+
+    await expect(
+      client.listRecentMergeRequestsWithMetadata(1, "merged"),
+    ).resolves.toMatchObject({
+      mergeRequests: [{ iid: 12 }],
+      retrieval: {
+        orderBy: "updated_at",
+        usedOrderByFallback: true,
+      },
+    });
+    expect(fetchMock.mock.calls.map(([url]) => url)).toEqual([
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=merged&order_by=merged_at&sort=desc&per_page=1&page=1",
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=merged&order_by=updated_at&sort=desc&per_page=1&page=1",
+    ]);
   });
 
   it("filters recent merge requests by author username", async () => {
@@ -91,7 +152,7 @@ describe("GitLabClient", () => {
       client.listRecentMergeRequests(7, "opened", "  mira  "),
     ).resolves.toEqual([{ iid: 12 }]);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=7&author_username=mira",
+      "https://gitlab.example.test/api/v4/projects/team%2Fservice/merge_requests?state=opened&order_by=updated_at&sort=desc&per_page=7&page=1&author_username=mira",
       expect.anything(),
     );
   });

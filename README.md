@@ -76,6 +76,13 @@ recent merge requests, compact human discussion summaries, and normalized
 review comments. Each discussion summary contains its file path, line, and
 message strings, excluding notes from usernames in
 `GITLAB_INVALID_COMMENT_USERS`.
+
+Recent merged merge requests are ordered by merge time and retrieved across
+GitLab pagination. On GitLab instances older than 17.2, which do not support
+merge-time ordering, the agent falls back to last-update order and says so in
+the result. Requests for comments on the last _N_ merge requests are executed
+as one bounded retrieval; the result reports the requested/returned MR count,
+GitLab page count, and comment persistence summary.
 Each returned normalized comment includes the complete discussion history (all
 notes and replies, including system events) in chronological order. It
 can filter comments by author, merge request, state, creation date, and resolved

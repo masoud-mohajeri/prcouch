@@ -64,6 +64,7 @@ describe("agent tools", () => {
       getCommentCategories: "get_comment_categories",
       saveAnalyzedComment: "save_analyzed_comment",
       generateCommentReport: "generate_comment_report",
+      clearAnalysisData: "clear_analysis_data",
     });
     expect(
       Object.keys(
@@ -149,6 +150,7 @@ describe("agent tools", () => {
       const result = await listComments.execute(
         {
           mergeRequestIid: 12,
+          mergeRequestLimit: 100,
           state: "all",
           includeResolved: true,
           limit: 25,

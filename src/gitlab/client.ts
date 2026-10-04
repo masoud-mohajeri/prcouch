@@ -1,4 +1,4 @@
-import { ServiceError } from "../errors.js";
+import { isServiceError, ServiceError } from "../errors.js";
 
 export type GitLabConfig = {
   baseUrl: string;
@@ -15,6 +15,27 @@ type Fetch = typeof fetch;
 type ExpectedBody = "array" | "object";
 
 const requestTimeoutMs = 30_000;
+// Keep requests below GitLab's maximum page size. This also ensures a 100-MR
+// request is retrieved through pagination rather than relying on one large
+// response from self-managed GitLab instances.
+const mergeRequestPageSize = 50;
+const maxPaginationPages = 100;
+
+export type MergeRequestOrderBy = "updated_at" | "merged_at";
+
+/** Metadata retained with a merge-request listing for diagnostics. */
+export type MergeRequestRetrieval = {
+  requestedLimit: number;
+  returnedCount: number;
+  pageCount: number;
+  orderBy: MergeRequestOrderBy;
+  usedOrderByFallback: boolean;
+};
+
+export type MergeRequestListResult = {
+  mergeRequests: MergeRequest[];
+  retrieval: MergeRequestRetrieval;
+};
 
 export type MergeRequest = {
   id: number;
@@ -211,19 +232,114 @@ export class GitLabClient {
     state: "all" | "opened" | "closed" | "merged" = "all",
     authorUsername?: string,
   ): Promise<MergeRequest[]> {
-    const params = new URLSearchParams({
-      state,
-      order_by: "updated_at",
-      sort: "desc",
-      per_page: String(limit),
-    });
-    const normalizedAuthorUsername = authorUsername?.trim();
-    if (normalizedAuthorUsername)
-      params.set("author_username", normalizedAuthorUsername);
+    return (
+      await this.listRecentMergeRequestsWithMetadata(
+        limit,
+        state,
+        authorUsername,
+      )
+    ).mergeRequests;
+  }
 
-    return this.get<MergeRequest[]>(
-      `/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`,
-      "array",
+  /**
+   * Lists the requested number of merge requests across GitLab pages. Merged
+   * requests are ordered by merge time when the connected GitLab supports it;
+   * older instances fall back to last-update ordering and report that fact.
+   */
+  async listRecentMergeRequestsWithMetadata(
+    limit: number,
+    state: "all" | "opened" | "closed" | "merged" = "all",
+    authorUsername?: string,
+  ): Promise<MergeRequestListResult> {
+    if (!Number.isInteger(limit) || limit < 1) {
+      throw new Error("limit must be a positive integer.");
+    }
+
+    const preferredOrderBy: MergeRequestOrderBy =
+      state === "merged" ? "merged_at" : "updated_at";
+    try {
+      return await this.listMergeRequests(
+        limit,
+        state,
+        authorUsername,
+        preferredOrderBy,
+        false,
+      );
+    } catch (error) {
+      if (
+        preferredOrderBy !== "merged_at" ||
+        !isServiceError(error) ||
+        error.statusCode !== 400
+      ) {
+        throw error;
+      }
+      return this.listMergeRequests(
+        limit,
+        state,
+        authorUsername,
+        "updated_at",
+        true,
+      );
+    }
+  }
+
+  private async listMergeRequests(
+    limit: number,
+    state: "all" | "opened" | "closed" | "merged",
+    authorUsername: string | undefined,
+    orderBy: MergeRequestOrderBy,
+    usedOrderByFallback: boolean,
+  ): Promise<MergeRequestListResult> {
+    const mergeRequests: MergeRequest[] = [];
+    const normalizedAuthorUsername = authorUsername?.trim();
+    let page = 1;
+
+    while (page <= maxPaginationPages && mergeRequests.length < limit) {
+      const params = new URLSearchParams({
+        state,
+        order_by: orderBy,
+        sort: "desc",
+        per_page: String(
+          Math.min(mergeRequestPageSize, limit - mergeRequests.length),
+        ),
+        page: String(page),
+      });
+      if (normalizedAuthorUsername)
+        params.set("author_username", normalizedAuthorUsername);
+
+      const { data, nextPage } = await this.getPage<MergeRequest[]>(
+        `/projects/${encodeURIComponent(this.config.project)}/merge_requests?${params}`,
+        "array",
+      );
+      mergeRequests.push(...data);
+      if (!nextPage || mergeRequests.length >= limit) {
+        return {
+          mergeRequests: mergeRequests.slice(0, limit),
+          retrieval: {
+            requestedLimit: limit,
+            returnedCount: Math.min(mergeRequests.length, limit),
+            pageCount: page,
+            orderBy,
+            usedOrderByFallback,
+          },
+        };
+      }
+
+      const nextPageNumber = Number(nextPage);
+      if (!Number.isInteger(nextPageNumber) || nextPageNumber <= page) {
+        throw new ServiceError(
+          "gitlab",
+          "incompatible-response",
+          "GitLab returned an invalid pagination response.",
+        );
+      }
+      page = nextPageNumber;
+    }
+
+    throw new ServiceError(
+      "gitlab",
+      "incompatible-response",
+      "GitLab returned more than 100 pages of merge requests.",
     );
   }
 

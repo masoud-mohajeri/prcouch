@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelMessage } from "ai";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const mocks = vi.hoisted(() => ({
   generateText: vi.fn(),
@@ -117,6 +120,50 @@ describe("runGitLabAgent chat history", () => {
       { role: "user", content: "give me list of last merged PRs" },
       { role: "assistant", content: result.text },
     ]);
+  });
+
+  it("retrieves bounded recent-MR comments directly without asking the model to orchestrate tools", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "prcouch-agent-comments-"));
+    const previousStorePath = process.env.ANALYSIS_STORE_PATH;
+    process.env.ANALYSIS_STORE_PATH = join(directory, "analytics.sqlite");
+    const client = new GitLabClient(
+      {
+        baseUrl: "https://gitlab.example.test",
+        token: "test-token",
+        project: "group/project",
+      },
+      async (url) => {
+        if (String(url).endsWith("/projects/group%2Fproject")) {
+          return new Response(
+            JSON.stringify({
+              id: 7,
+              path_with_namespace: "group/project",
+              web_url: "https://gitlab.example.test/group/project",
+            }),
+          );
+        }
+        if (String(url).includes("/merge_requests?"))
+          return new Response(JSON.stringify([]));
+        return new Response("Not found", { status: 404 });
+      },
+    );
+
+    try {
+      const result = await runGitLabAgent(
+        "get all comments on last 100 merged PRs",
+        { gitLabClient: client },
+      );
+
+      expect(mocks.generateText).not.toHaveBeenCalled();
+      expect(result.toolCalls).toEqual(["list_comments"]);
+      expect(result.text).toContain("Merge requests: 0 of 100 requested");
+      expect(result.text).toContain("ordered by merge time");
+    } finally {
+      if (previousStorePath === undefined)
+        delete process.env.ANALYSIS_STORE_PATH;
+      else process.env.ANALYSIS_STORE_PATH = previousStorePath;
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it("retrieves a named merge request instead of falling back to a recent list", async () => {

@@ -58,7 +58,7 @@ export function createGitLabTools(
           .number()
           .int()
           .min(1)
-          .max(200)
+          .max(100)
           .default(1)
           .describe("Number of merge requests to return"),
         state: z
@@ -75,9 +75,13 @@ export function createGitLabTools(
           ),
       }),
       execute: async ({ limit, state, authorUsername }) => {
-        const [project, mergeRequests] = await Promise.all([
+        const [project, result] = await Promise.all([
           client.getProject(),
-          client.listRecentMergeRequests(limit, state, authorUsername),
+          client.listRecentMergeRequestsWithMetadata(
+            limit,
+            state,
+            authorUsername,
+          ),
         ]);
         return {
           project,
@@ -86,7 +90,7 @@ export function createGitLabTools(
             state,
             authorUsername: authorUsername ?? null,
           },
-          mergeRequests,
+          ...result,
         };
       },
     }),
@@ -133,6 +137,15 @@ export function createGitLabTools(
             .positive()
             .optional()
             .describe("Optional project-local merge request IID"),
+          mergeRequestLimit: z
+            .number()
+            .int()
+            .min(1)
+            .max(100)
+            .default(100)
+            .describe(
+              "Number of recent merge requests to inspect when mergeRequestIid is omitted",
+            ),
           state: z
             .enum(["all", "opened", "closed", "merged"])
             .default("all")
@@ -186,7 +199,7 @@ export function createGitLabTools(
   };
 }
 
-async function saveCommentPage(
+export async function saveCommentPage(
   analysisStore: AnalysisStore,
   page: Awaited<ReturnType<CommentService["list"]>>,
 ) {

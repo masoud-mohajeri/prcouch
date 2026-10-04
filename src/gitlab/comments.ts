@@ -5,6 +5,7 @@ import type {
   GitLabClient,
   MergeRequestChange,
   MergeRequestCommit,
+  MergeRequestRetrieval,
   MergeRequest,
   MergeRequestNote,
   Project,
@@ -16,6 +17,8 @@ const DISCUSSION_CONCURRENCY = 5;
 export type CommentQuery = {
   authorName?: string;
   mergeRequestIid?: number;
+  /** Number of recent merge requests to inspect when no IID is supplied. */
+  mergeRequestLimit?: number;
   state: "all" | "opened" | "closed" | "merged";
   createdAfter?: string;
   createdBefore?: string;
@@ -81,6 +84,7 @@ export type CommentPage = {
   items: NormalizedComment[];
   nextCursor: string | null;
   total: number;
+  mergeRequestRetrieval: MergeRequestRetrieval | null;
 };
 
 /**
@@ -108,15 +112,23 @@ export class CommentService {
       throw new Error("createdAfter must be before or equal to createdBefore.");
     }
     const projectRequest = this.gitlab.getProject();
+    const mergeRequestLimit = query.mergeRequestLimit ?? this.maxMergeRequests;
     const mergeRequestsRequest = query.mergeRequestIid
       ? this.gitlab
           .getMergeRequest(query.mergeRequestIid)
-          .then((mergeRequest) => [mergeRequest])
-      : this.gitlab.listRecentMergeRequests(this.maxMergeRequests, query.state);
-    const [project, mergeRequests] = await Promise.all([
+          .then((mergeRequest) => ({
+            mergeRequests: [mergeRequest],
+            retrieval: null,
+          }))
+      : this.gitlab.listRecentMergeRequestsWithMetadata(
+          mergeRequestLimit,
+          query.state,
+        );
+    const [project, mergeRequestResult] = await Promise.all([
       projectRequest,
       mergeRequestsRequest,
     ]);
+    const { mergeRequests, retrieval } = mergeRequestResult;
     const selectedMergeRequests =
       query.state === "all"
         ? mergeRequests
@@ -197,6 +209,7 @@ export class CommentService {
       items,
       total: comments.length,
       nextCursor: nextOffset < comments.length ? String(nextOffset) : null,
+      mergeRequestRetrieval: retrieval,
     };
   }
 

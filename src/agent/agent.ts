@@ -2,6 +2,7 @@ import { generateText, stepCountIs, type ModelMessage } from "ai";
 import { createOpenAI } from "@ai-sdk/openai";
 
 import { createAgentTools } from "./tools/index.js";
+import { saveCommentPage } from "./tools/gitlab-tools.js";
 import { compactChatHistory } from "./chat-history.js";
 import {
   PendingCommentCategorizer,
@@ -10,6 +11,7 @@ import {
 import { CommentCategoryPolicy } from "../analysis/category-policy.js";
 import { AnalysisStore } from "../analysis/store.js";
 import { GitLabClient, requireGitLabConfig } from "../gitlab/client.js";
+import { CommentService } from "../gitlab/comments.js";
 import { isServiceError, ServiceError } from "../errors.js";
 import { getOpenAIConfig } from "./openai-config.js";
 import { toOpenAIServiceError } from "./openai-error.js";
@@ -74,6 +76,8 @@ type MergeRequestListRequest = {
   state: "all" | "opened" | "closed" | "merged";
 };
 
+type RecentMergeRequestCommentRequest = MergeRequestListRequest;
+
 /**
  * Start unambiguous data requests with their relevant tool. This prevents a
  * model from asking for values that the tool schemas already default, and also
@@ -111,6 +115,8 @@ export function getInitialToolForInput(
   )
     return "get_project";
   if (mergeRequestIid && !mentionsComments) return "get_merge_request";
+  if (mentionsComments && mentionsMergeRequest && mentionsRecentMergeRequest)
+    return "list_comments";
   if (mentionsMergeRequest && (mentionsRecentMergeRequest || !mentionsComments))
     return "list_recent_merge_requests";
   if (mentionsComments) return "list_comments";
@@ -182,6 +188,33 @@ export function getMergeRequestListRequest(
   return { limit, state };
 }
 
+/**
+ * Recognizes bounded multi-MR comment retrieval so it can run without asking
+ * the model to first list MRs and then decide how to fetch their comments.
+ */
+export function getRecentMergeRequestCommentRequest(
+  input: string,
+): RecentMergeRequestCommentRequest | undefined {
+  const query = input.toLowerCase().trim();
+  if (getNamedMergeRequestIid(input)) return undefined;
+  if (!/\b(?:review )?comments?\b/.test(query)) return undefined;
+  if (!/\b(?:merge requests?|mrs?|prs?)\b/.test(query)) return undefined;
+
+  const requestedLimit = query.match(/\b(?:last|latest|recent)\s+(\d+)\b/);
+  if (!requestedLimit) return undefined;
+
+  return {
+    limit: Math.min(Math.max(Number(requestedLimit[1]), 1), 100),
+    state: /\bmerged\b/.test(query)
+      ? "merged"
+      : /\bopen(?:ed)?\b/.test(query)
+        ? "opened"
+        : /\bclosed?\b/.test(query)
+          ? "closed"
+          : "all",
+  };
+}
+
 /** Returns the project-local IID in a user-supplied GitLab reference such as !5896. */
 export function getNamedMergeRequestIid(input: string): number | undefined {
   const match = input.match(/(?:^|\s)!([1-9]\d*)\b/);
@@ -213,6 +246,18 @@ export async function runGitLabAgent(
       ? provider.chat(modelName)
       : provider.responses(modelName);
   const userMessage: ModelMessage = { role: "user", content: input };
+  const recentMergeRequestCommentRequest =
+    getRecentMergeRequestCommentRequest(input);
+  if (recentMergeRequestCommentRequest) {
+    const client = gitLabClient ?? new GitLabClient(requireGitLabConfig());
+    const agentResult = await listRecentMergeRequestCommentsDirectly(
+      client,
+      recentMergeRequestCommentRequest,
+      onToolExecution,
+    );
+    recordVisibleChatTurn(chatHistory, userMessage, agentResult.text);
+    return agentResult;
+  }
   const mergeRequestListRequest = getMergeRequestListRequest(input);
   if (mergeRequestListRequest) {
     const client = gitLabClient ?? new GitLabClient(requireGitLabConfig());
@@ -323,14 +368,14 @@ async function listMergeRequestsDirectly(
     toolName: "list_recent_merge_requests",
   });
   try {
-    const [project, mergeRequests] = await Promise.all([
+    const [project, mergeRequestResult] = await Promise.all([
       client.getProject(),
-      client.listRecentMergeRequests(request.limit, request.state),
+      client.listRecentMergeRequestsWithMetadata(request.limit, request.state),
     ]);
     const result = {
       project,
       query: { ...request, authorUsername: null },
-      mergeRequests,
+      ...mergeRequestResult,
     };
     notifyToolExecution(onToolExecution, {
       type: "finished",
@@ -349,6 +394,49 @@ async function listMergeRequestsDirectly(
       succeeded: false,
     });
     throw error;
+  }
+}
+
+async function listRecentMergeRequestCommentsDirectly(
+  client: GitLabClient,
+  request: RecentMergeRequestCommentRequest,
+  onToolExecution?: ToolExecutionObserver,
+): Promise<AgentResult> {
+  notifyToolExecution(onToolExecution, {
+    type: "started",
+    toolName: "list_comments",
+  });
+  const analysisStore = new AnalysisStore();
+  try {
+    const page = await new CommentService(client).list({
+      state: request.state,
+      mergeRequestLimit: request.limit,
+      includeResolved: true,
+      // The bounded request explicitly asks for every comment, so persist all
+      // normalized results instead of returning only a tool-response page.
+      limit: Number.MAX_SAFE_INTEGER,
+    });
+    const persistence = await saveCommentPage(analysisStore, page);
+    const result = { ...page, persistence };
+    notifyToolExecution(onToolExecution, {
+      type: "finished",
+      toolName: "list_comments",
+      succeeded: true,
+    });
+    return {
+      text: formatCommentRetrieval(result),
+      toolCalls: ["list_comments"],
+      toolResults: [result],
+    };
+  } catch (error) {
+    notifyToolExecution(onToolExecution, {
+      type: "finished",
+      toolName: "list_comments",
+      succeeded: false,
+    });
+    throw error;
+  } finally {
+    analysisStore.close();
   }
 }
 
@@ -391,6 +479,7 @@ function formatMergeRequestList({
   project,
   query,
   mergeRequests,
+  retrieval,
 }: {
   project: { path_with_namespace: string };
   query: MergeRequestListRequest & { authorUsername: null };
@@ -400,8 +489,18 @@ function formatMergeRequestList({
     state: string;
     web_url: string;
   }>;
+  retrieval: {
+    pageCount: number;
+    orderBy: "updated_at" | "merged_at";
+    usedOrderByFallback: boolean;
+  };
 }): string {
-  const heading = `Project: ${project.path_with_namespace}\nApplied state: ${query.state}\nResult: ${mergeRequests.length} ${query.state} merge request${mergeRequests.length === 1 ? "" : "s"} found.`;
+  const order =
+    retrieval.orderBy === "merged_at" ? "merge time" : "last update";
+  const fallback = retrieval.usedOrderByFallback
+    ? " (merge-time ordering is unavailable on this GitLab instance)"
+    : "";
+  const heading = `Project: ${project.path_with_namespace}\nApplied state: ${query.state}\nOrdered by: ${order}${fallback}\nRetrieved from: ${retrieval.pageCount} GitLab page${retrieval.pageCount === 1 ? "" : "s"}\nResult: ${mergeRequests.length} ${query.state} merge request${mergeRequests.length === 1 ? "" : "s"} found.`;
   if (!mergeRequests.length) return heading;
   return `${heading}\n\n${mergeRequests
     .map(
@@ -409,6 +508,29 @@ function formatMergeRequestList({
         `- !${mergeRequest.iid} — ${mergeRequest.title} (${mergeRequest.web_url})`,
     )
     .join("\n")}`;
+}
+
+function formatCommentRetrieval({
+  project,
+  total,
+  persistence,
+  mergeRequestRetrieval,
+}: {
+  project: { path_with_namespace: string };
+  total: number;
+  persistence: { saved: number; existing: number };
+  mergeRequestRetrieval: {
+    requestedLimit: number;
+    returnedCount: number;
+    pageCount: number;
+    orderBy: "updated_at" | "merged_at";
+    usedOrderByFallback: boolean;
+  } | null;
+}): string {
+  const retrieval = mergeRequestRetrieval
+    ? `Merge requests: ${mergeRequestRetrieval.returnedCount} of ${mergeRequestRetrieval.requestedLimit} requested, from ${mergeRequestRetrieval.pageCount} GitLab page${mergeRequestRetrieval.pageCount === 1 ? "" : "s"}, ordered by ${mergeRequestRetrieval.orderBy === "merged_at" ? "merge time" : "last update"}${mergeRequestRetrieval.usedOrderByFallback ? " (merge-time ordering unavailable)" : ""}.`
+    : "Merge request: retrieved directly.";
+  return `Project: ${project.path_with_namespace}\n${retrieval}\nReview comments retrieved: ${total}\nSaved locally: ${persistence.saved} new, ${persistence.existing} already present.`;
 }
 
 function formatMergeRequest({
