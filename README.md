@@ -108,6 +108,39 @@ filesystem path.
 Use `npm run db:studio` to inspect the local database with Drizzle Studio. It
 is a local development tool and can edit data, so do not expose it remotely.
 
+### Add issue categories directly to SQLite
+
+`issue_categories` requires metadata beyond the category code and description.
+Use an upsert so rerunning the command safely updates an existing category:
+
+```bash
+sqlite3 data/analytics.sqlite "
+INSERT INTO issue_categories (
+  code, name, description, recommended_solution, default_resolution,
+  active, version, created_at, updated_at
+) VALUES (
+  'type_safety',
+  'Type safety',
+  'Problems caused by weak, incorrect, missing, or overly broad TypeScript types.',
+  'Use strict TypeScript settings and type-aware linting in CI.',
+  'open', 1, 1, datetime('now'), datetime('now')
+)
+ON CONFLICT(code) DO UPDATE SET
+  name = excluded.name,
+  description = excluded.description,
+  recommended_solution = excluded.recommended_solution,
+  default_resolution = excluded.default_resolution,
+  active = excluded.active,
+  version = excluded.version,
+  updated_at = excluded.updated_at;
+"
+```
+
+Replace the values with the desired category. If `ANALYSIS_STORE_PATH` is set,
+use that SQLite file instead. The next category-policy sync deactivates database
+categories absent from `config/comment-categories.json`; add the category there
+too when it must remain available for future classifications.
+
 ## Examples
 
 ```bash
