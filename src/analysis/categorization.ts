@@ -47,13 +47,14 @@ export class PendingCommentCategorizer {
     onProgress?: (event: CategorizationProgressEvent) => void;
   }): Promise<CategorizationResult> {
     await this.store.syncCategories(await this.categoryPolicy.list());
-    const [categories, comments] = await Promise.all([
+    const [categories, comments, total] = await Promise.all([
       this.store.listStoredCategories(),
       this.store.listPendingComments(BATCH_SIZE),
+      this.store.countPendingComments(),
     ]);
     if (!categories.length)
       throw new Error("No active SQLite comment categories are available.");
-    onProgress?.({ type: "loaded", total: comments.length });
+    onProgress?.({ type: "loaded", total });
     if (!comments.length) {
       return { processed: 0, remaining: 0, categoryCounts: {} };
     }
@@ -84,7 +85,7 @@ export class PendingCommentCategorizer {
           onProgress?.({
             type: "persisted",
             completed: index + 1,
-            total: assignments.length,
+            total,
           }),
         );
         return {
