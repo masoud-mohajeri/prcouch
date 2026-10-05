@@ -123,7 +123,7 @@ export async function executeReviewAnalysisFlow(paths: {
     rationale: "Validation prevents malformed invoice data.",
     analyzedBy: "evaluation fixture",
   });
-  const report = await reportGenerator.generate({ authorName: "ava" });
+  const report = await reportGenerator.generate();
 
   return { project, comments: page.items, record, report, requests };
 }

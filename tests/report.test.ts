@@ -156,7 +156,6 @@ describe("CommentReportGenerator", () => {
     );
 
     const filtered = await generator.generate({
-      authorName: "ben",
       category: "testing",
       commentCreatedAfter: "2026-01-03T00:00:00.000Z",
       commentCreatedBefore: "2026-01-06T00:00:00.000Z",

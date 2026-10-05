@@ -85,6 +85,10 @@ skip steps that are unnecessary:
 6. Report.
    - Generate a report only when the user requests one or when it is necessary
      to produce the requested output.
+   - An unqualified request for a report, all analyzed comments, or the full
+     database means one combined report. Call generate_comment_report with no
+     filters immediately; do not ask whether to split or filter it.
+   - Apply report filters only when the user explicitly supplies them.
 
 ## Destructive actions
 

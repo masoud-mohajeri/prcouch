@@ -47,7 +47,7 @@ export function createAnalysisTools(
     }),
     [analysisToolNames.generateCommentReport]: tool({
       description:
-        "Generate a standalone offline HTML report from saved comment analyses. Use after comments have been analyzed and saved. Supports filtering saved analyses, including review-date filters (commentCreatedAfter, commentCreatedBefore) and analysis-date filters (analyzedAfter, analyzedBefore). The report summarizes category percentages and provides drill-down details including comment, resolution, merge request, location, recommended action, rationale, and source. Author information is excluded. The output directory is controlled by REPORT_OUTPUT_DIR; the caller cannot choose an arbitrary output path.",
+        "Generate one standalone offline HTML report from saved comment analyses. Use after comments have been analyzed and saved. When the user asks for a report without explicit filters, including a report for all analyzed comments or the full database, call this tool with an empty object to generate one combined report; do not ask a follow-up about categories or resolutions. Apply filters only when the user explicitly requests them. Supported filters include review dates (commentCreatedAfter, commentCreatedBefore) and analysis dates (analyzedAfter, analyzedBefore). The report summarizes category percentages and provides drill-down details including comment, resolution, merge request, location, recommended action, rationale, and source. Author information is excluded. The output directory is controlled by REPORT_OUTPUT_DIR; the caller cannot choose an arbitrary output path.",
       inputSchema: reportFiltersSchema,
       execute: async (filters) => ({
         report: await reportGenerator.generate(filters),

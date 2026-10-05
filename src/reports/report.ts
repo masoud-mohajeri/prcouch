@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
-import { join, resolve, sep } from "node:path";
+import { resolve, sep } from "node:path";
 import { z } from "zod";
 
 import {
@@ -16,7 +16,6 @@ import {
 
 export const reportFiltersSchema = z
   .object({
-    authorName: z.string().trim().min(1).optional(),
     category: z.string().trim().min(1).optional(),
     resolution: resolutionSchema.optional(),
     commentCreatedAfter: z.string().datetime({ offset: true }).optional(),
@@ -87,7 +86,7 @@ export class CommentReportGenerator {
   }
 
   async generate(filters: ReportFilters = {}): Promise<GeneratedReport> {
-    const parsedFilters = reportFiltersSchema.parse(filters);
+    const parsedFilters = normalizeFilters(reportFiltersSchema.parse(filters));
     const [records, categories, coverage] = await Promise.all([
       this.analysisStore.list(),
       this.categoryPolicy.list(),
@@ -141,14 +140,6 @@ function matchesFilters(
   if (filters.category && record.category !== filters.category) return false;
   if (filters.resolution && record.resolution !== filters.resolution)
     return false;
-  if (filters.authorName) {
-    const needle = filters.authorName.toLocaleLowerCase();
-    if (
-      !record.comment.author.name.toLocaleLowerCase().includes(needle) &&
-      !record.comment.author.username.toLocaleLowerCase().includes(needle)
-    )
-      return false;
-  }
   const commentCreatedAt = new Date(record.comment.createdAt);
   if (
     filters.commentCreatedAfter &&
@@ -164,6 +155,38 @@ function matchesFilters(
   return (
     (!filters.analyzedAfter || analyzedAt >= new Date(filters.analyzedAfter)) &&
     (!filters.analyzedBefore || analyzedAt <= new Date(filters.analyzedBefore))
+  );
+}
+
+/** Converts UI sentinel values into the absent filters they represent. */
+function normalizeFilters(
+  filters: z.output<typeof reportFiltersSchema>,
+): z.output<typeof reportFiltersSchema> {
+  const normalized = { ...filters };
+  if (normalized.category?.toLocaleLowerCase() === "all")
+    delete normalized.category;
+  if (isUnboundedStart(normalized.commentCreatedAfter))
+    delete normalized.commentCreatedAfter;
+  if (isUnboundedEnd(normalized.commentCreatedBefore))
+    delete normalized.commentCreatedBefore;
+  if (isUnboundedStart(normalized.analyzedAfter))
+    delete normalized.analyzedAfter;
+  if (isUnboundedEnd(normalized.analyzedBefore))
+    delete normalized.analyzedBefore;
+  return normalized;
+}
+
+function isUnboundedStart(value: string | undefined): boolean {
+  return (
+    value !== undefined &&
+    Date.parse(value) === Date.parse("0001-01-01T00:00:00Z")
+  );
+}
+
+function isUnboundedEnd(value: string | undefined): boolean {
+  return (
+    value !== undefined &&
+    Date.parse(value) === Date.parse("9999-12-31T23:59:59Z")
   );
 }
 
@@ -208,24 +231,54 @@ function renderReport(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'nonce-${nonce}'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'nonce-${nonce}'; script-src 'none'; img-src 'none'; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
   <title>Review Health Report</title>
   <style nonce="${nonce}">
     :root { color-scheme: light dark; font-family: Inter, ui-sans-serif, system-ui, sans-serif; color: #172033; background: #f5f7fb; }
-    body { max-width: 1440px; margin: 0 auto; padding: 32px; background: #f5f7fb; }
+    body { max-width: 1440px; margin: 0 auto; padding: 32px 32px 90px; background: #f5f7fb; }
     h1 { margin: 0; font-size: 28px; } h2 { margin: 0 0 14px; font-size: 18px; }
     .muted { color: #586174; } .header { display: flex; justify-content: space-between; gap: 24px; align-items: flex-start; margin-bottom: 24px; }
-    .cards, .category-list { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin: 18px 0; }
-    .card, .table-card, .category-card, .comment-card { background: #fff; color: #172033; border: 1px solid #dce2ee; border-radius: 12px; padding: 18px; box-shadow: 0 2px 5px rgba(20, 34, 58, .04); }
+    .cards { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); margin: 18px 0; }
+    .card, .category-group, .comment-card { background: #fff; color: #172033; border: 1px solid #dce2ee; border-radius: 12px; padding: 18px; box-shadow: 0 2px 5px rgba(20, 34, 58, .04); }
     .metric { font-size: 30px; font-weight: 700; margin-top: 7px; } .filters { margin: 8px 0 0; font-size: 14px; } .meta { margin: 5px 0 0; font-size: 13px; }
-    .category-card { appearance: none; width: 100%; cursor: pointer; text-align: left; font: inherit; } .category-card:hover, .category-card:focus-visible, .category-card[aria-pressed="true"] { border-color: #4f6bed; box-shadow: 0 0 0 3px rgba(79, 107, 237, .16); outline: none; } .category-card .metric { color: #3455cf; } .category-card-title { display: flex; justify-content: space-between; gap: 12px; font-weight: 700; } .category-card-count { margin: 8px 0 0; font-size: 14px; }
-    .controls { display: flex; gap: 12px; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; }
-    input { min-width: 250px; padding: 9px 10px; border: 1px solid #b9c4d8; border-radius: 7px; font: inherit; color: inherit; background: transparent; } button.clear { border: 1px solid #b9c4d8; border-radius: 7px; padding: 8px 10px; cursor: pointer; font: inherit; color: inherit; background: transparent; }
-    .comment-list { display: grid; gap: 12px; } .comment-card { box-shadow: none; } .comment-meta { display: flex; flex-wrap: wrap; gap: 6px 14px; margin: 8px 0; font-size: 13px; } .comment-body { white-space: pre-wrap; margin: 12px 0; } .comment-action { margin: 10px 0 0; padding: 10px; border-left: 3px solid #4f6bed; background: rgba(79, 107, 237, .06); } code { font-size: 12px; word-break: break-all; } a { color: #3455cf; } .empty { padding: 28px 0; text-align: center; color: #586174; }
-    @media (prefers-color-scheme: dark) { :root, body { background: #101624; color: #e6ebf5; } .card, .table-card, .category-card, .comment-card { background: #182033; color: #e6ebf5; border-color: #2e3a52; } .muted { color: #aeb8ca; } a { color: #9bb0ff; } input, button.clear { border-color: #52617c; } .comment-action { background: rgba(155, 176, 255, .12); } }
+    * { box-sizing: border-box; }
+    a { color: #3455cf; text-underline-offset: 3px; }
+    a:focus-visible, pre:focus-visible { outline: 3px solid #4f6bed; outline-offset: 4px; }
+    .back-to-top { position: fixed; bottom: 20px; right: 20px; z-index: 10; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 12px 16px; border-radius: 24px; background: #3455cf; color: #fff; font-size: 14px; font-weight: 600; text-decoration: none; box-shadow: 0 4px 14px rgba(20, 34, 58, .25); }
+    .back-to-top:hover { background: #2841a1; }
+    @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+    .category-nav { margin: 24px 0; padding: 20px; border: 1px solid #dce2ee; border-radius: 12px; background: #fff; }
+    .category-links { display: flex; flex-wrap: wrap; gap: 10px; margin: 0; padding: 0; list-style: none; }
+    .category-links a { display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 10px 14px; border: 1px solid #dce2ee; border-radius: 8px; text-decoration: none; }
+    .category-links a:hover { background: rgba(79, 107, 237, .08); border-color: #4f6bed; }
+    .category-links .category-count { padding: 2px 7px; border-radius: 6px; background: rgba(79, 107, 237, .1); }
+    .category-group { margin: 24px 0; scroll-margin-top: 24px; }
+    .category-group:target { border-color: #4f6bed; }
+    .category-heading { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; align-items: baseline; }
+    .category-heading h2 { margin: 0; }
+    .category-heading-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 16px; }
+    .category-count, .back-link { font-size: 14px; }
+    .comment-list { display: grid; gap: 18px; margin-top: 20px; }
+    .comment-card { min-width: 0; padding: 24px; box-shadow: none; }
+    .comment-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; margin-bottom: 20px; font-size: 13px; overflow-wrap: anywhere; }
+    .resolution { padding: 4px 9px; border-radius: 6px; background: rgba(79, 107, 237, .1); }
+    .content-label { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+    .comment-body { margin: 0 0 22px; padding: 16px 18px; border-inline-start: 3px solid #4f6bed; border-radius: 6px; background: rgba(79, 107, 237, .05); font-size: 16px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
+    .comment-code { max-width: 100%; margin: 0; padding: 18px; border: 1px solid #dce2ee; border-radius: 8px; background: #f5f7fb; color: #172033; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.7; tab-size: 4; white-space: pre; overflow-x: auto; text-align: left; }
+    .comment-code code { display: block; width: max-content; min-width: 100%; font: inherit; unicode-bidi: isolate; }
+    .diff-line { display: inline-block; min-width: 100%; }
+    .diff-added { background: #e6ffed; color: #14532d; }
+    .diff-removed { background: #ffeef0; color: #7f1d1d; }
+    .diff-hunk { background: #eaf2ff; color: #3455cf; }
+    .comment-action { margin-top: 22px; padding-top: 18px; border-top: 1px solid #dce2ee; }
+    .comment-action p { margin: 0; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
+    .empty { padding: 28px 0; text-align: center; color: #586174; }
+    @media (max-width: 640px) { body { padding: 16px 16px 90px; } .header { flex-direction: column; gap: 8px; } .category-group, .category-nav { padding: 16px; } .comment-card { padding: 16px; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (prefers-color-scheme: dark) { :root, body { background: #101624; color: #e6ebf5; } .card, .category-group, .category-nav, .comment-card { background: #182033; color: #e6ebf5; border-color: #2e3a52; } .category-links a, .comment-code, .comment-action { border-color: #2e3a52; } .comment-code { background: #101624; color: #e6ebf5; } .muted { color: #aeb8ca; } a { color: #9bb0ff; } .comment-body, .resolution, .category-links .category-count { background: rgba(155, 176, 255, .08); } }
+    @media (prefers-color-scheme: dark) { .diff-added { background: #173b27; color: #b7f5c8; } .diff-removed { background: #46252b; color: #ffc1c9; } .diff-hunk { background: #1e2d48; color: #9bb0ff; } }
   </style>
 </head>
-<body>
+<body id="top">
   <header class="header">
     <div><h1>Review Health Report</h1><p class="muted">${escapeHtml(projectSummary)} · Generated ${escapeHtml(formatDate(generatedAt))}</p><p class="meta muted">Review dates: ${escapeHtml(reviewDateRange)} · ${escapeHtml(coverageLabel)} · ${escapeHtml(latestAnalysis)}</p><p class="filters">${escapeHtml(filterSummary)}</p></div>
     <div class="muted">Self-contained offline report</div>
@@ -240,47 +293,9 @@ function renderReport(
     records.length === 0
       ? '<p class="empty">No matching analyzed comments.</p>'
       : `
-  ${categoryDistribution(records, categoryById)}
-  ${categoryCommentList(records, categoryById)}`
+  ${categoryCommentGroups(records, categoryById)}`
   }
-  <script nonce="${nonce}">
-    const query = document.querySelector('#comment-filter');
-    const categoryCards = [...document.querySelectorAll('[data-category]')];
-    const comments = [...document.querySelectorAll('[data-comment-category]')];
-    const detail = document.querySelector('#category-details');
-    const title = document.querySelector('#selected-category');
-    const clear = document.querySelector('#clear-category');
-    let selectedCategory = '';
-    const updateComments = () => {
-      const term = query?.value.toLocaleLowerCase() ?? '';
-      comments.forEach((comment) => {
-        const matchesCategory = selectedCategory && comment.dataset.commentCategory === selectedCategory;
-        comment.hidden = !matchesCategory || !comment.textContent.toLocaleLowerCase().includes(term);
-      });
-    };
-    categoryCards.forEach((card) => {
-      card.addEventListener('click', () => {
-        selectedCategory = card.dataset.category ?? '';
-        categoryCards.forEach((item) => item.setAttribute('aria-pressed', String(item === card)));
-        detail.hidden = !selectedCategory;
-        title.textContent = card.dataset.categoryLabel ?? 'Category comments';
-        clear.hidden = false;
-        query.value = '';
-        updateComments();
-      });
-    });
-    clear?.addEventListener('click', () => {
-      selectedCategory = '';
-      categoryCards.forEach((card) => card.setAttribute('aria-pressed', 'false'));
-      detail.hidden = true;
-      clear.hidden = true;
-      query.value = '';
-      updateComments();
-    });
-    query?.addEventListener('input', () => {
-      updateComments();
-    });
-  </script>
+  <a class="back-to-top" href="#top" aria-label="Scroll to top"><span aria-hidden="true">↑</span> Back to top</a>
 </body>
 </html>`;
 }
@@ -295,45 +310,82 @@ function isUnresolved(record: AnalyzedCommentRecord): boolean {
   );
 }
 
-function categoryDistribution(
+function categoryCommentGroups(
   records: AnalyzedCommentRecord[],
   categoryById: Map<string, CommentCategory>,
 ): string {
-  const counts = new Map<string, number>();
+  const byCategory = new Map<string, AnalyzedCommentRecord[]>();
   for (const record of records) {
-    counts.set(record.category, (counts.get(record.category) ?? 0) + 1);
+    const categoryRecords = byCategory.get(record.category) ?? [];
+    categoryRecords.push(record);
+    byCategory.set(record.category, categoryRecords);
   }
-  const cards = [...counts.entries()]
-    .sort(
-      ([leftId, leftCount], [rightId, rightCount]) =>
-        rightCount - leftCount || leftId.localeCompare(rightId),
-    )
-    .map(([id, count]) => {
-      const category = categoryById.get(id);
-      const label = category?.label ?? id;
-      const percent = (count / records.length) * 100;
-      return `<button class="category-card" type="button" data-category="${escapeAttribute(id)}" data-category-label="${escapeAttribute(label)}" aria-pressed="false"><span class="category-card-title"><span>${escapeHtml(label)}</span><span class="muted">${escapeHtml(category?.severity ?? "uncategorized")}</span></span><div class="metric">${percent.toFixed(0)}%</div><p class="category-card-count">${count} ${count === 1 ? "comment" : "comments"}</p><p class="muted">${escapeHtml(category?.description ?? "No category description available.")}</p></button>`;
+
+  const groups = [...byCategory.entries()].sort(([left], [right]) => {
+    const leftLabel = categoryById.get(left)?.label ?? left;
+    const rightLabel = categoryById.get(right)?.label ?? right;
+    return leftLabel.localeCompare(rightLabel);
+  });
+  const links = groups
+    .map(([categoryId, categoryRecords], index) => {
+      const label = categoryById.get(categoryId)?.label ?? categoryId;
+      const percentage = (
+        (categoryRecords.length / records.length) *
+        100
+      ).toFixed(1);
+      return `<li><a href="#category-${index}"><span>${escapeHtml(label)}</span><span class="category-count">${categoryRecords.length} (${percentage}%)</span></a></li>`;
     })
     .join("");
-  return `<section class="table-card" aria-labelledby="category-distribution-title"><h2 id="category-distribution-title">Comments by issue category</h2><p class="muted">Each percentage is the share of included comments. Select a category to see its corresponding comments.</p><div class="category-list">${cards}</div></section>`;
+  const sections = groups
+    .map(([categoryId, categoryRecords], index) => {
+      const category = categoryById.get(categoryId);
+      const label = category?.label ?? categoryId;
+      const comments = categoryRecords
+        .map((record) => {
+          const code =
+            record.savedComment?.codeThatComentIsOn ||
+            "No code context available";
+          return `<article class="comment-card">
+  <div class="comment-meta muted">
+    <span class="resolution">${escapeHtml(record.resolution.replace(/_/g, " "))}</span>
+    <bdi dir="ltr">${escapeHtml(formatLocation(record))}</bdi>
+    <time datetime="${escapeAttribute(record.comment.createdAt)}">${escapeHtml(formatDate(record.comment.createdAt))}</time>
+    ${safeLink(record.comment.sourceUrl, "Open in GitLab")}
+  </div>
+  <h3 class="content-label muted">Comment</h3>
+  <div class="comment-body" dir="auto">${escapeHtml(record.comment.body)}</div>
+  <h3 class="content-label muted">Code context</h3>
+  <pre class="comment-code" dir="ltr" tabindex="0" aria-label="Code context"><code>${renderCodeContext(code)}</code></pre>
+  <div class="comment-action">
+    <h3 class="content-label muted">Recommended solution</h3>
+    <p dir="auto">${escapeHtml(category?.action ?? "—")}</p>
+  </div>
+</article>`;
+        })
+        .join("");
+      return `<section class="category-group" id="category-${index}" aria-labelledby="category-heading-${index}"><div class="category-heading"><h2 id="category-heading-${index}">${escapeHtml(label)}</h2><div class="category-heading-meta"><span class="muted category-count">${categoryRecords.length} ${categoryRecords.length === 1 ? "comment" : "comments"}</span><a class="back-link" href="#categories">Back to categories</a></div></div><p class="muted" dir="auto">${escapeHtml(category?.description ?? "No category description available.")}</p><div class="comment-list">${comments}</div></section>`;
+    })
+    .join("");
+  return `<nav class="category-nav" id="categories" aria-labelledby="categories-heading"><h2 id="categories-heading">Browse categories</h2><ul class="category-links">${links}</ul></nav>${sections}`;
 }
 
-function categoryCommentList(
-  records: AnalyzedCommentRecord[],
-  categoryById: Map<string, CommentCategory>,
-): string {
-  const comments = records
-    .map((record) => {
-      const category = categoryById.get(record.category);
-      const mergeRequest = safeLink(
-        record.mergeRequest.webUrl,
-        `!${record.mergeRequest.iid} ${record.mergeRequest.title}`,
-      );
-      const source = safeLink(record.comment.sourceUrl, "Open comment");
-      return `<article class="comment-card" data-comment-category="${escapeAttribute(record.category)}" hidden><div class="comment-meta"><span>${escapeHtml(record.resolution.replace(/_/g, " "))}</span><span>${mergeRequest}</span><span>${escapeHtml(formatLocation(record))}</span><span>${escapeHtml(formatDate(record.comment.createdAt))}</span></div><div class="comment-body">${escapeHtml(record.comment.body)}</div><div class="comment-action"><strong>Recommended action:</strong> ${escapeHtml(category?.action ?? "—")}${record.rationale ? `<br><strong>Rationale:</strong> ${escapeHtml(record.rationale)}` : ""}</div><p class="muted">${source}</p></article>`;
+function renderCodeContext(code: string): string {
+  if (!/^@@ -\d+(?:,\d+)? \+\d+(?:,\d+)? @@/m.test(code))
+    return escapeHtml(code);
+
+  return code
+    .split(/\r?\n/)
+    .map((line) => {
+      const style = line.startsWith("@@ ")
+        ? " diff-hunk"
+        : line.startsWith("+")
+          ? " diff-added"
+          : line.startsWith("-")
+            ? " diff-removed"
+            : "";
+      return `<span class="diff-line${style}">${escapeHtml(line)}</span>`;
     })
-    .join("");
-  return `<section id="category-details" class="table-card" hidden><div class="controls"><h2 id="selected-category">Category comments</h2><button id="clear-category" class="clear" type="button" hidden>Back to categories</button><input id="comment-filter" type="search" placeholder="Search selected comments" aria-label="Search selected comments"></div><div class="comment-list">${comments}</div></section>`;
+    .join("\n");
 }
 
 function formatLocation(record: AnalyzedCommentRecord): string {
@@ -347,12 +399,10 @@ function formatLocation(record: AnalyzedCommentRecord): string {
 
 function formatFilters(filters: z.output<typeof reportFiltersSchema>): string {
   const entries = Object.entries(filters).filter(
-    ([key]) => key !== "authorName",
+    ([, value]) => value !== undefined,
   );
   return entries.length === 0
-    ? Object.hasOwn(filters, "authorName")
-      ? "Filtered saved analyses"
-      : "All saved analyses"
+    ? "All saved analyses"
     : `Filters: ${entries.map(([key, value]) => `${key}=${value}`).join(", ")}`;
 }
 

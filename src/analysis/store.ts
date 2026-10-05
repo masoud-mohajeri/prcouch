@@ -131,6 +131,7 @@ export type FetchedCommentInput = z.input<typeof fetchedCommentInputSchema>;
 export const analyzedCommentRecordSchema = analyzedCommentInputSchema.extend({
   id: z.string().min(1),
   analyzedAt: z.string().datetime({ offset: true }),
+  savedComment: savedCommentSchema.optional(),
 });
 
 export type AnalyzedCommentRecord = z.infer<typeof analyzedCommentRecordSchema>;
@@ -197,6 +198,7 @@ export class AnalysisStore {
         oldLine: comments.oldLine,
         newLine: comments.newLine,
         commitSha: comments.commitSha,
+        savedCommentJson: comments.savedCommentJson,
         category: issueCategories.code,
         resolution: commentAnalytics.resolution,
         rationale: commentAnalytics.rationale,
@@ -251,6 +253,7 @@ export class AnalysisStore {
         analyzedBy: row.analyzedBy ?? undefined,
         model: row.model ?? undefined,
         analyzedAt: row.analyzedAt,
+        savedComment: parseSavedComment(row.savedCommentJson),
       }),
     );
   }
@@ -964,4 +967,14 @@ function defaultSavedComment(
     commitMessage: "",
     fileNewPaht: comment.location.newPath ?? "",
   };
+}
+
+function parseSavedComment(value: string | null): SavedComment | undefined {
+  if (!value) return undefined;
+  try {
+    const parsed = savedCommentSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : undefined;
+  } catch {
+    return undefined;
+  }
 }
