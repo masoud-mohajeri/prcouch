@@ -2,6 +2,7 @@ import "dotenv/config";
 
 import { runChatSession } from "./chat-session.js";
 import { installProcessWarningLogger, writeCliLog } from "./logging.js";
+import { initializeCliTracing } from "./tracing.js";
 
 const terminalUi = Boolean(process.stdin.isTTY && process.stdout.isTTY);
 installProcessWarningLogger(terminalUi);
@@ -19,7 +20,20 @@ if (!terminalUi && !argumentInput) {
   process.exit(1);
 }
 
-await runChatSession({ initialInput: argumentInput, terminalUi });
+const tracingSdk = initializeCliTracing();
+try {
+  await runChatSession({ initialInput: argumentInput, terminalUi });
+} finally {
+  try {
+    await tracingSdk?.shutdown();
+  } catch (error) {
+    writeCliLog(
+      "warning",
+      `Could not shut down Langfuse tracing: ${String(error)}`,
+      terminalUi,
+    );
+  }
+}
 
 function showError(message: string): void {
   writeCliLog("error", message, terminalUi);

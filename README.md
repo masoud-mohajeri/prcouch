@@ -23,7 +23,7 @@ src/
 - A read-only GitLab token (`read_api` or fine-grained **Merge Request: Read**
   permission) that can list the project to analyze
 
-Langfuse credentials are only required when exporting live evaluation traces.
+Langfuse credentials are only required when exporting CLI or evaluation traces.
 
 ## Quick start
 
@@ -174,7 +174,7 @@ credentials, these settings are available:
 | `ANALYSIS_STORE_PATH`          | Changes the local SQLite database path.                                                     |
 | `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy.                                              |
 | `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
-| `LANGFUSE_*`                   | Configures Langfuse evaluation tracing.                                                     |
+| `LANGFUSE_*`                   | Configures Langfuse CLI and evaluation tracing.                                             |
 
 ## Tests and evals
 
@@ -188,7 +188,7 @@ The test suite includes a full fixture-backed review-analysis flow and report
 generation. The GitLab golden eval injects fixture responses, so it does not
 call a real GitLab instance or require a GitLab token.
 
-## Langfuse evaluation tracing
+## Langfuse tracing
 
 To run Langfuse locally, copy the service configuration and replace every
 placeholder with a strong secret. `DATABASE_URL` must use the same password as
@@ -210,6 +210,12 @@ LANGFUSE_BASE_URL=http://localhost:4000
 LANGFUSE_PUBLIC_KEY=...
 LANGFUSE_SECRET_KEY=...
 ```
+
+With these credentials configured, `npm start` exports each agent turn,
+including direct GitLab retrieval, to Langfuse. Completed turns are flushed
+before the next prompt, and tracing shuts down when the session ends.
+Omit both API keys to disable CLI tracing. Traces contain request input and
+agent output, including any returned GitLab data.
 
 Use `npm run langfuse:logs` to follow startup and `npm run langfuse:down` to
 stop the local services. The named Docker volumes retain Langfuse data after a

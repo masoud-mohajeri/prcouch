@@ -8,6 +8,7 @@ import {
   text,
 } from "@clack/prompts";
 import type { ModelMessage } from "ai";
+import { setActiveTraceIO, startActiveObservation } from "@langfuse/tracing";
 
 import { runGitLabAgent } from "../agent/agent.js";
 import {
@@ -18,6 +19,7 @@ import { formatCliError } from "./error.js";
 import { createCategorizationProgressReporter } from "./categorization-progress.js";
 import { writeCliLog } from "./logging.js";
 import { createToolActivityReporter } from "./tool-activity.js";
+import { flushCliTracing } from "./tracing.js";
 
 export type ChatSessionOptions = {
   initialInput: string;
@@ -68,16 +70,26 @@ async function runTurn(
   const activity = terminalUi ? spinner() : undefined;
   try {
     activity?.start("Working on your request");
-    const result = await runGitLabAgent(input, {
-      gitLabClient,
-      chatHistory,
-      onToolExecution: activity
-        ? createToolActivityReporter(activity)
-        : undefined,
-      onCategorizationProgress: activity
-        ? createCategorizationProgressReporter(activity)
-        : undefined,
-    });
+    const result = await startActiveObservation(
+      "gitlab-agent-turn",
+      async (observation) => {
+        observation.update({ input });
+        const output = await runGitLabAgent(input, {
+          gitLabClient,
+          chatHistory,
+          onToolExecution: activity
+            ? createToolActivityReporter(activity)
+            : undefined,
+          onCategorizationProgress: activity
+            ? createCategorizationProgressReporter(activity)
+            : undefined,
+        });
+        observation.update({ output });
+        setActiveTraceIO({ input, output });
+        return output;
+      },
+      { asType: "agent" },
+    );
     activity?.stop("Request complete");
 
     console.log(terminalUi ? `\nResponse\n\n${result.text}` : result.text);
@@ -87,6 +99,16 @@ async function runTurn(
     activity?.stop("Request failed", 1);
     showError(formatCliError(error), terminalUi);
     if (!terminalUi) process.exitCode = 1;
+  } finally {
+    try {
+      await flushCliTracing();
+    } catch (error) {
+      writeCliLog(
+        "warning",
+        `Could not flush Langfuse tracing: ${String(error)}`,
+        terminalUi,
+      );
+    }
   }
 }
 
