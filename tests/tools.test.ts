@@ -78,6 +78,9 @@ describe("agent tools", () => {
     ).toEqual([
       ...Object.values(gitLabToolNames),
       ...Object.values(analysisToolNames),
+      "list_analyzed_comments",
+      "get_analyzed_comment",
+      "search_web",
     ]);
   });
 

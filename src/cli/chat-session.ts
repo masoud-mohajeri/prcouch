@@ -68,6 +68,10 @@ async function runTurn(
   gitLabClient: GitLabClient,
 ): Promise<void> {
   const activity = terminalUi ? spinner() : undefined;
+  const reportActivity = activity
+    ? createToolActivityReporter(activity)
+    : undefined;
+  const lookupDiagnostics: string[] = [];
   try {
     activity?.start("Working on your request");
     const result = await startActiveObservation(
@@ -77,9 +81,19 @@ async function runTurn(
         const output = await runGitLabAgent(input, {
           gitLabClient,
           chatHistory,
-          onToolExecution: activity
-            ? createToolActivityReporter(activity)
-            : undefined,
+          onToolExecution: (event) => {
+            reportActivity?.(event);
+            if (event.type === "started" && event.input)
+              lookupDiagnostics.push(
+                `${event.toolName} ${JSON.stringify(event.input)}`,
+              );
+            if (event.type === "finished" && event.summary) {
+              const { returned, total, status } = event.summary;
+              lookupDiagnostics.push(
+                `${event.toolName}: returned ${returned}${total === undefined ? "" : ` of ${total} matching analyses`}${status ? ` (${status})` : ""}`,
+              );
+            }
+          },
           onCategorizationProgress: activity
             ? createCategorizationProgressReporter(activity)
             : undefined,
@@ -100,6 +114,8 @@ async function runTurn(
     showError(formatCliError(error), terminalUi);
     if (!terminalUi) process.exitCode = 1;
   } finally {
+    if (lookupDiagnostics.length)
+      console.log(`\nDatabase lookups:\n${lookupDiagnostics.join("\n")}`);
     try {
       await flushCliTracing();
     } catch (error) {

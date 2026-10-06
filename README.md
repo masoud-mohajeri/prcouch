@@ -176,6 +176,61 @@ credentials, these settings are available:
 | `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
 | `LANGFUSE_*`                   | Configures Langfuse CLI and evaluation tracing.                                             |
 
+## Local web research with SearXNG
+
+Requires Docker with Compose. Add these settings to `.env`:
+
+```dotenv
+SEARXNG_BASE_URL=http://localhost:8080
+SEARXNG_SECRET=replace_with_a_random_secret
+```
+
+Generate the secret with `openssl rand -hex 32`, then run:
+
+```bash
+npm run searxng:up
+curl 'http://localhost:8080/search?q=typescript+validation&format=json'
+```
+
+The separate Compose deployment binds only to localhost and enables HTML and
+JSON search. Open <http://localhost:8080> for its browser UI.
+`npm run searxng:logs` shows logs; `npm run searxng:down` stops the service,
+retaining its named data volume. This does not start or stop Langfuse.
+The setup follows the [SearXNG container documentation](https://docs.searxng.org/admin/installation-docker.html).
+
+After fetching and categorizing comments, ask in the CLI:
+
+```text
+Use web search to find better solutions for saved security comments in MR !42.
+Research analyzed comments about repeated database queries and suggest improvements.
+Use SearXNG to research comment 7:45 and cite supporting documentation.
+```
+
+The prompt controls selection, including semantic criteria. Saved analyses are
+scoped to the selected project and paginated (20 per page, maximum 100).
+Research replies map recommendations to comment IDs and include source links.
+They do not update saved analyses or reports.
+
+For an exact GitLab note, use its numeric ID: “Use web search to find a solution
+for note ID 444221 based on its analyzed category.” The agent uses
+`get_analyzed_comment`, which distinguishes a missing note from one awaiting
+analysis. Lists also support `noteIds`; SQLite applies filters before pagination.
+Research tools return the stored solution plus category description and
+recommended solution from the database. The CLI prints database lookup arguments,
+returned counts and exact-lookup status, without printing comment/code payloads.
+
+Search is available only on explicit research requests. The agent is instructed
+to derive generic technical queries, omitting raw comments, source code, and
+internal identifiers. This privacy behavior depends on model instructions;
+queries reach upstream search engines. Results are titles, snippets, and links,
+not full pages, so evidence may be limited and engines may fail or rate-limit.
+The [search API documentation](https://docs.searxng.org/dev/search_api.html)
+describes the JSON interface.
+
+SearXNG needs no OpenAI credentials. The existing agent uses `OPENAI_API_KEY`,
+`OPENAI_BASE_URL`, `OPENAI_MODEL`, and `OPENAI_API_MODE` from `.env` to reason
+about results. Only the SearXNG secret is passed into the search container.
+
 ## Tests and evals
 
 ```bash
