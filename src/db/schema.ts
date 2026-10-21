@@ -173,3 +173,69 @@ export const syncRuns = sqliteTable("sync_runs", {
   createdAt: text("created_at").notNull(),
   updatedAt: text("updated_at").notNull(),
 });
+
+export const researchRuns = sqliteTable(
+  "research_runs",
+  {
+    id: text("id").primaryKey(),
+    projectId: integer("project_id")
+      .notNull()
+      .references(() => projects.id, { onDelete: "cascade" }),
+    filtersJson: text("filters_json").notNull(),
+    model: text("model").notNull(),
+    promptVersion: text("prompt_version").notNull(),
+    status: text("status").notNull(),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+  },
+  (table) => [index("research_runs_project_index").on(table.projectId)],
+);
+
+export const researchTasks = sqliteTable(
+  "research_tasks",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => researchRuns.id, { onDelete: "cascade" }),
+    commentId: text("comment_id").notNull(),
+    inputSnapshotJson: text("input_snapshot_json"),
+    status: text("status").notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+    startedAt: text("started_at"),
+    completedAt: text("completed_at"),
+    errorJson: text("error_json"),
+    resultJson: text("result_json"),
+    successfulSearchesJson: text("successful_searches_json"),
+  },
+  (table) => [
+    uniqueIndex("research_tasks_run_comment_unique").on(
+      table.runId,
+      table.commentId,
+    ),
+    index("research_tasks_run_status_index").on(table.runId, table.status),
+  ],
+);
+
+export const researchSearchCache = sqliteTable(
+  "research_search_cache",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    runId: text("run_id")
+      .notNull()
+      .references(() => researchRuns.id, { onDelete: "cascade" }),
+    normalizedQuery: text("normalized_query").notNull(),
+    retrievedAt: text("retrieved_at").notNull(),
+    responseJson: text("response_json").notNull(),
+  },
+  (table) => [
+    uniqueIndex("research_cache_run_query_unique").on(
+      table.runId,
+      table.normalizedQuery,
+    ),
+  ],
+);

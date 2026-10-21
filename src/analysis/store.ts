@@ -158,6 +158,9 @@ export type AnalysisCoverage = {
 };
 
 const analysisDataTablesCleanupList = [
+  "research_tasks",
+  "research_search_cache",
+  "research_runs",
   "comment_analytics",
   "comments",
   "discussions",
@@ -223,6 +226,28 @@ export class AnalysisStore {
           : null,
       records,
     };
+  }
+
+  /** Reusable SQL selection for an atomic research INSERT ... SELECT snapshot. */
+  getAnalyzedCommentSelectionQuery(
+    filters: Omit<AnalyzedCommentQuery, "offset" | "limit">,
+  ) {
+    return this.db
+      .selectDistinct({
+        commentId:
+          sql<string>`${comments.projectId} || ':' || ${comments.noteId}`.as(
+            "comment_id",
+          ),
+      })
+      .from(commentAnalytics)
+      .innerJoin(comments, eq(commentAnalytics.commentId, comments.id))
+      .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
+      .innerJoin(
+        issueCategories,
+        eq(commentAnalytics.categoryId, issueCategories.id),
+      )
+      .where(this.analyzedCommentWhere({ ...filters, offset: 0, limit: 10 }))
+      .getSQL();
   }
 
   /** Exact project-local note lookup distinguishes missing data from unfinished analysis. */

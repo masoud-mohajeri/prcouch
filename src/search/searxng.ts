@@ -31,7 +31,10 @@ export class SearxngClient {
     private readonly fetchImpl: typeof fetch = fetch,
   ) {}
 
-  async search(input: z.input<typeof webSearchInputSchema>) {
+  async search(
+    input: z.input<typeof webSearchInputSchema>,
+    signal?: AbortSignal,
+  ) {
     const { query, limit } = webSearchInputSchema.parse(input);
     let url: URL;
     try {
@@ -60,7 +63,9 @@ export class SearxngClient {
     try {
       const response = await this.fetchImpl(url, {
         headers: { Accept: "application/json" },
-        signal: AbortSignal.timeout(30_000),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(30_000)])
+          : AbortSignal.timeout(30_000),
       });
       if (!response.ok) {
         const kind =
