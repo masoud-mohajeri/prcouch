@@ -5,6 +5,11 @@ categorizing review comments, saving local analyses, and producing offline HTML
 reports. The [AI SDK](https://ai-sdk.dev/) agent loop lives in
 [`src/agent/agent.ts`](src/agent/agent.ts).
 
+`master` contains the categorization MVP. Web search and comment research are
+under development on `feature/search-research`; progress is tracked in that
+branch's `docs/in-progress.md`. See [the MVP demo guide](docs/mvp.md) for a
+presentation flow using a separate database.
+
 ## Project layout
 
 ```text
@@ -93,8 +98,10 @@ pending work in the local SQLite database. Each row also retains a stringified
 `saved_comment_json` payload containing `commentMessageTexts`,
 `codeThatComentIsOn`, `commitMessage`, and `fileNewPaht`. Categorization then
 analyzes those saved comments with the committed category policy at
-[`config/comment-categories.json`](config/comment-categories.json). Completed
-analyses include an approved category, resolution, and evidence-based rationale:
+[`config/comment-categories.json`](config/comment-categories.json). Batch
+categorization assigns an approved category and its configured default
+resolution and recommended solution. It does not infer a per-comment rationale
+or verify whether the issue has been fixed. Saved analyses use:
 
 ```text
 data/analytics.sqlite
@@ -146,7 +153,7 @@ too when it must remain available for future classifications.
 ```bash
 npm start -- "What is the selected GitLab project name?"
 npm start -- "List unresolved review comments by Ava, including file, line, and commit SHA."
-npm start -- "Categorize the review comments and save each analysis with a rationale."
+npm start -- "Categorize all pending comments."
 npm start -- "Generate an HTML report for saved security comments."
 ```
 
@@ -157,8 +164,9 @@ Ask the agent to generate a self-contained HTML dashboard from saved analyses.
 By default, reports are timestamped files in `reports/`. Set
 `REPORT_OUTPUT_DIR` to change the directory. A report shows what percentage of
 the included comments belongs to each issue category. Select a category to see
-only its corresponding comments, along with their resolution, merge request,
-location, recommended action, rationale, and source. Author data is omitted.
+its corresponding comments, along with their stored resolution, location,
+available code context, category-level recommended solution, and GitLab source
+link. Author data is omitted.
 Report files are gitignored because they can contain local review data.
 
 ## Configuration
