@@ -2,7 +2,7 @@ import { mkdirSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 
 import Database from "better-sqlite3";
-import { and, asc, desc, eq, sql, inArray, gte, lte, count } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/better-sqlite3";
 import { migrate } from "drizzle-orm/better-sqlite3/migrator";
 import { z } from "zod";
@@ -136,31 +136,12 @@ export const analyzedCommentRecordSchema = analyzedCommentInputSchema.extend({
 
 export type AnalyzedCommentRecord = z.infer<typeof analyzedCommentRecordSchema>;
 
-export type AnalyzedCommentQuery = {
-  projectId: number;
-  ids?: string[];
-  noteIds?: number[];
-  category?: string;
-  categories?: string[];
-  mergeRequestIid?: number;
-  resolution?: z.infer<typeof resolutionSchema>;
-  commentCreatedAfter?: string;
-  commentCreatedBefore?: string;
-  analyzedAfter?: string;
-  analyzedBefore?: string;
-  offset: number;
-  limit: number;
-};
-
 export type AnalysisCoverage = {
   totalComments: number;
   completedComments: number;
 };
 
 const analysisDataTablesCleanupList = [
-  "research_tasks",
-  "research_search_cache",
-  "research_runs",
   "comment_analytics",
   "comments",
   "discussions",
@@ -197,145 +178,7 @@ export class AnalysisStore {
   }
 
   async list(): Promise<AnalyzedCommentRecord[]> {
-    return this.readAnalyzedComments().map(
-      ({ solution, categoryDetails, recommendedAction, ...record }) => record,
-    );
-  }
-
-  /** Applies structured filters in SQLite before returning a bounded page. */
-  async queryAnalyzedComments(filters: AnalyzedCommentQuery) {
-    const total = this.db
-      .select({ value: count() })
-      .from(commentAnalytics)
-      .innerJoin(comments, eq(commentAnalytics.commentId, comments.id))
-      .innerJoin(projects, eq(comments.projectId, projects.id))
-      .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
-      .innerJoin(discussions, eq(comments.discussionId, discussions.id))
-      .innerJoin(
-        issueCategories,
-        eq(commentAnalytics.categoryId, issueCategories.id),
-      )
-      .where(this.analyzedCommentWhere(filters))
-      .get()!.value;
-    const records = this.readAnalyzedComments(filters);
-    return {
-      total,
-      nextOffset:
-        filters.offset + filters.limit < total
-          ? filters.offset + filters.limit
-          : null,
-      records,
-    };
-  }
-
-  /** Reusable SQL selection for an atomic research INSERT ... SELECT snapshot. */
-  getAnalyzedCommentSelectionQuery(
-    filters: Omit<AnalyzedCommentQuery, "offset" | "limit">,
-  ) {
-    return this.db
-      .selectDistinct({
-        commentId:
-          sql<string>`${comments.projectId} || ':' || ${comments.noteId}`.as(
-            "comment_id",
-          ),
-      })
-      .from(commentAnalytics)
-      .innerJoin(comments, eq(commentAnalytics.commentId, comments.id))
-      .innerJoin(mergeRequests, eq(comments.mergeRequestId, mergeRequests.id))
-      .innerJoin(
-        issueCategories,
-        eq(commentAnalytics.categoryId, issueCategories.id),
-      )
-      .where(this.analyzedCommentWhere({ ...filters, offset: 0, limit: 10 }))
-      .getSQL();
-  }
-
-  /** Exact project-local note lookup distinguishes missing data from unfinished analysis. */
-  async getAnalyzedComment(projectId: number, noteId: number) {
-    const saved = this.db
-      .select({ analysisStatus: comments.analysisStatus })
-      .from(comments)
-      .where(
-        and(eq(comments.projectId, projectId), eq(comments.noteId, noteId)),
-      )
-      .get();
-    if (!saved) return { status: "not_found" as const, record: null };
-    if (saved.analysisStatus !== "completed")
-      return {
-        status: "not_analyzed" as const,
-        analysisStatus: saved.analysisStatus,
-        record: null,
-      };
-    const record = this.readAnalyzedComments({
-      projectId,
-      noteIds: [noteId],
-      offset: 0,
-      limit: 1,
-    })[0];
-    if (!record)
-      return {
-        status: "analysis_missing" as const,
-        analysisStatus: saved.analysisStatus,
-        record: null,
-      };
-    return { status: "completed" as const, record };
-  }
-
-  private analyzedCommentWhere(filters?: AnalyzedCommentQuery) {
-    const predicates = [eq(comments.analysisStatus, "completed")];
-    if (filters) {
-      predicates.push(eq(comments.projectId, filters.projectId));
-      if (filters.ids)
-        predicates.push(
-          inArray(
-            sql<string>`${comments.projectId} || ':' || ${comments.noteId}`,
-            filters.ids,
-          ),
-        );
-      if (filters.noteIds)
-        predicates.push(inArray(comments.noteId, filters.noteIds));
-      if (filters.category)
-        predicates.push(eq(issueCategories.code, filters.category));
-      if (filters.categories)
-        predicates.push(inArray(issueCategories.code, filters.categories));
-      if (filters.mergeRequestIid)
-        predicates.push(eq(mergeRequests.iid, filters.mergeRequestIid));
-      if (filters.resolution)
-        predicates.push(eq(commentAnalytics.resolution, filters.resolution));
-      if (filters.commentCreatedAfter)
-        predicates.push(
-          gte(
-            sql`julianday(${comments.commentCreatedAt})`,
-            sql`julianday(${filters.commentCreatedAfter})`,
-          ),
-        );
-      if (filters.commentCreatedBefore)
-        predicates.push(
-          lte(
-            sql`julianday(${comments.commentCreatedAt})`,
-            sql`julianday(${filters.commentCreatedBefore})`,
-          ),
-        );
-      if (filters.analyzedAfter)
-        predicates.push(
-          gte(
-            sql`julianday(${comments.analyzedAt})`,
-            sql`julianday(${filters.analyzedAfter})`,
-          ),
-        );
-      if (filters.analyzedBefore)
-        predicates.push(
-          lte(
-            sql`julianday(${comments.analyzedAt})`,
-            sql`julianday(${filters.analyzedBefore})`,
-          ),
-        );
-    }
-    return and(...predicates);
-  }
-
-  private readAnalyzedComments(filters?: AnalyzedCommentQuery) {
-    const query = this.db
+    const rows = this.db
       .select({
         projectId: projects.id,
         projectPathWithNamespace: projects.pathWithNamespace,
@@ -357,10 +200,6 @@ export class AnalysisStore {
         commitSha: comments.commitSha,
         savedCommentJson: comments.savedCommentJson,
         category: issueCategories.code,
-        categoryName: issueCategories.name,
-        categoryDescription: issueCategories.description,
-        categoryRecommendedSolution: issueCategories.recommendedSolution,
-        solution: commentAnalytics.solution,
         resolution: commentAnalytics.resolution,
         rationale: commentAnalytics.rationale,
         analyzedBy: commentAnalytics.analyzedBy,
@@ -376,14 +215,12 @@ export class AnalysisStore {
         issueCategories,
         eq(commentAnalytics.categoryId, issueCategories.id),
       )
-      .where(this.analyzedCommentWhere(filters))
+      .where(eq(comments.analysisStatus, "completed"))
       .orderBy(desc(comments.analyzedAt), desc(comments.noteId))
-      .$dynamic();
-    if (filters) query.limit(filters.limit).offset(filters.offset);
-    const rows = query.all();
+      .all();
 
-    return rows.map((row) => ({
-      ...analyzedCommentRecordSchema.parse({
+    return rows.map((row) =>
+      analyzedCommentRecordSchema.parse({
         id: `${row.projectId}:${row.noteId}`,
         project: {
           id: row.projectId,
@@ -418,15 +255,7 @@ export class AnalysisStore {
         analyzedAt: row.analyzedAt,
         savedComment: parseSavedComment(row.savedCommentJson),
       }),
-      solution: row.solution,
-      categoryDetails: {
-        code: row.category,
-        name: row.categoryName,
-        description: row.categoryDescription,
-        recommendedSolution: row.categoryRecommendedSolution,
-      },
-      recommendedAction: row.categoryRecommendedSolution,
-    }));
+    );
   }
 
   /** Counts every saved review comment so reports can disclose analysis coverage. */

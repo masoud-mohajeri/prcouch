@@ -5,8 +5,6 @@ import { CommentReportGenerator } from "../../reports/report.js";
 
 import { createAnalysisTools } from "./analysis-tools.js";
 import { createGitLabTools } from "./gitlab-tools.js";
-import { createResearchTools } from "./research-tools.js";
-import { SearxngClient } from "../../search/searxng.js";
 import {
   instrumentToolExecutions,
   type ToolExecutionObserver,
@@ -21,8 +19,6 @@ export type AgentToolOptions = {
   categoryPolicy?: CommentCategoryPolicy;
   reportGenerator?: CommentReportGenerator;
   onToolExecution?: ToolExecutionObserver;
-  searchClient?: SearxngClient;
-  allowWebSearch?: boolean;
 };
 
 /** Combines independent retrieval and analysis tool sets for the agent. */
@@ -32,19 +28,11 @@ export function createAgentTools({
   categoryPolicy = new CommentCategoryPolicy(),
   reportGenerator = new CommentReportGenerator(analysisStore, categoryPolicy),
   onToolExecution,
-  searchClient,
-  allowWebSearch = false,
 }: AgentToolOptions = {}) {
   return instrumentToolExecutions(
     {
       ...createGitLabTools(client, analysisStore),
       ...createAnalysisTools(analysisStore, categoryPolicy, reportGenerator),
-      ...createResearchTools(
-        client,
-        analysisStore,
-        searchClient,
-        allowWebSearch,
-      ),
     },
     onToolExecution,
   );

@@ -1,4 +1,4 @@
-export type ServiceName = "gitlab" | "openai" | "searxng";
+export type ServiceName = "gitlab" | "openai";
 
 export type ServiceErrorKind =
   | "configuration"

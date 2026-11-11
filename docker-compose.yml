@@ -1,5 +1,5 @@
-# Local infrastructure: SearXNG and Langfuse v4 with its backing services.
-# Keep the project name so existing Langfuse containers and volumes are reused.
+# Local Langfuse v4 deployment. Service credentials belong in .langfuse.env,
+# which is intentionally ignored by git.
 name: prcouch-langfuse
 
 x-langfuse-common: &langfuse-common
@@ -16,32 +16,6 @@ x-langfuse-common: &langfuse-common
       condition: service_healthy
 
 services:
-  searxng:
-    image: docker.io/searxng/searxng:latest
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8080:8080"
-    environment:
-      SEARXNG_SECRET: ${SEARXNG_SECRET:?Run npm run infra:up to configure SearXNG}
-      SEARXNG_BASE_URL: http://localhost:8080/
-    volumes:
-      - ./config/searxng/settings.yml:/etc/searxng/settings.yml:ro
-      - searxng_data:/var/cache/searxng
-    healthcheck:
-      test:
-        [
-          "CMD",
-          "wget",
-          "--quiet",
-          "--tries=1",
-          "--spider",
-          "http://127.0.0.1:8080/",
-        ]
-      interval: 5s
-      timeout: 5s
-      retries: 20
-      start_period: 10s
-
   langfuse-web:
     <<: *langfuse-common
     image: docker.langfuse.com/langfuse/langfuse:4
@@ -52,16 +26,6 @@ services:
       # ZooKeeper/ClickHouse Keeper.
       CLICKHOUSE_CLUSTER_ENABLED: "false"
       LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
-    healthcheck:
-      test:
-        - CMD
-        - node
-        - -e
-        - "fetch('http://' + process.env.HOSTNAME + ':3000/api/public/health?failIfDatabaseUnavailable=true').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
-      interval: 10s
-      timeout: 10s
-      retries: 30
-      start_period: 30s
 
   langfuse-worker:
     <<: *langfuse-common
@@ -142,9 +106,6 @@ services:
       start_period: 1s
 
 volumes:
-  searxng_data:
-    # Reuse the cache from the former standalone SearXNG stack.
-    name: prcouch-searxng_searxng_data
   langfuse_postgres_data:
   langfuse_clickhouse_data:
   langfuse_clickhouse_logs:

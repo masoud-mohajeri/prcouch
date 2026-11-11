@@ -1,11 +1,6 @@
 export type ToolExecutionEvent =
-  | { type: "started"; toolName: string; input?: unknown }
-  | {
-      type: "finished";
-      toolName: string;
-      succeeded: boolean;
-      summary?: { returned: number; total?: number; status?: string };
-    };
+  | { type: "started"; toolName: string }
+  | { type: "finished"; toolName: string; succeeded: boolean };
 
 export type ToolExecutionObserver = (event: ToolExecutionEvent) => void;
 
@@ -65,21 +60,13 @@ async function executeTool(
   onToolExecution?: ToolExecutionObserver,
 ): Promise<unknown> {
   if (!onToolExecution) return execute(...args);
-  const diagnostic =
-    toolName === "list_analyzed_comments" ||
-    toolName === "get_analyzed_comment";
-  notify(onToolExecution, {
-    type: "started",
-    toolName,
-    ...(diagnostic ? { input: args[0] } : {}),
-  });
+  notify(onToolExecution, { type: "started", toolName });
   try {
     const result = await execute(...args);
     notify(onToolExecution, {
       type: "finished",
       toolName,
       succeeded: true,
-      ...(diagnostic ? { summary: summarizeCommentLookup(result) } : {}),
     });
     return result;
   } catch (error) {
@@ -90,25 +77,6 @@ async function executeTool(
     });
     throw error;
   }
-}
-
-function summarizeCommentLookup(result: unknown) {
-  if (!result || typeof result !== "object") return { returned: 0 };
-  const data = result as {
-    records?: unknown[];
-    record?: unknown;
-    total?: number;
-    status?: string;
-  };
-  return {
-    returned: Array.isArray(data.records)
-      ? data.records.length
-      : data.record
-        ? 1
-        : 0,
-    ...(typeof data.total === "number" ? { total: data.total } : {}),
-    ...(typeof data.status === "string" ? { status: data.status } : {}),
-  };
 }
 
 function notify(

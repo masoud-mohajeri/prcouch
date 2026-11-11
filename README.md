@@ -13,7 +13,6 @@ src/
   agent/     AI orchestration, provider configuration, and separated tool sets
   gitlab/    GitLab API client and review-comment normalization
   analysis/  Saved-analysis storage, validation, and category policy
-  research/  Persisted comment research, bounded search, and batch execution
   reports/   Offline HTML report generation
 ```
 
@@ -32,26 +31,8 @@ Langfuse credentials are only required when exporting CLI or evaluation traces.
 cp .env.example .env
 # Edit .env with your OpenAI and GitLab credentials.
 npm install
-npm run infra:up
 npm start -- "List unresolved review comments in recent merge requests"
 ```
-
-`infra:up` requires Docker with Compose. It starts SearXNG, Langfuse web/worker,
-PostgreSQL, ClickHouse, Redis, and MinIO from `docker-compose.yml`, waits for
-readiness, and initializes/migrates the local SQLite analysis database. The agent
-runs on the host; it is started separately with `npm start`.
-
-The script creates missing `.env` and `.langfuse.env` files, generates local
-service secrets, and adds missing search/tracing URLs. Existing settings and
-Langfuse credentials are preserved. OpenAI/GitLab credentials and Langfuse
-project API keys still need your configuration. A fresh `.env` leaves tracing
-disabled until you add those project keys.
-
-Use `npm run infra:logs` for logs and `npm run infra:down` to stop the stack.
-Named Docker volumes and the local SQLite file survive shutdown. Existing
-Langfuse volumes retain their original Compose project name. On upgrade from
-the standalone SearXNG deployment, the script stops its old search container
-and reuses its cache volume in the combined stack.
 
 When run directly in an interactive terminal, `npm start` first prompts for a
 GitLab project, then opens a chat session that prompts for further requests
@@ -195,102 +176,6 @@ credentials, these settings are available:
 | `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
 | `LANGFUSE_*`                   | Configures Langfuse CLI and evaluation tracing.                                             |
 
-## Local web research with SearXNG
-
-Run `npm run infra:up` to configure and start local search alongside Langfuse.
-The script adds missing settings to `.env`:
-
-```dotenv
-SEARXNG_BASE_URL=http://localhost:8080
-SEARXNG_SECRET=replace_with_a_random_secret
-```
-
-It generates the search secret automatically. Verify the JSON API with:
-
-```bash
-curl 'http://localhost:8080/search?q=typescript+validation&format=json'
-```
-
-The search service binds only to localhost and enables HTML and
-JSON search. Open <http://localhost:8080> for its browser UI.
-`npm run searxng:logs` shows logs; `npm run searxng:down` stops the service,
-retaining its named data volume. After initial setup, `npm run searxng:up`
-starts only search; these search-specific commands do not stop Langfuse.
-The setup follows the [SearXNG container documentation](https://docs.searxng.org/admin/installation-docker.html).
-
-After fetching and categorizing comments, ask in the CLI:
-
-```text
-Use web search to research all analyzed comments in this project.
-Use web search to find better solutions for saved security comments in MR !42.
-Resume research run <ID>
-Research analyzed comments about repeated database queries and suggest improvements.
-Use SearXNG to research comment 7:45 and cite supporting documentation.
-```
-
-Explicit all-comment or category-filtered requests start a persisted batch.
-Selection supports saved category codes, note IDs, MR IID, resolution and date
-boundaries within the selected project. Unsupported criteria require clarification
-before a run starts; semantic matching is not a batch filter. Ordinary interactive
-research still uses paginated lookups (20 per page, maximum 100).
-
-A batch snapshots distinct completed-analysis comment identities, including
-resolved comments unless filtered out. It loads context when each task starts
-and saves that input with its result. Comments added later require a new run.
-Processing uses pages of 10 and at most two concurrent comment tasks. Each task
-uses at most three generic queries, with at most 10 results per query and a
-30-second request timeout. Equivalent queries share successful responses within
-the run, including empty responses; each comment evaluates applicability separately.
-
-The CLI shows the run ID and bounded progress, then counts supported candidates,
-insufficient evidence, insufficient context, no action needed, failed and remaining
-comments. Pure praise and context too limited to diagnose an issue skip search.
-Structured results and search evidence are saved in separate research tables in
-the same SQLite database. Existing analyses and reports retain their contents.
-Inspect research results with Drizzle Studio; batch output prints aggregate counts.
-
-Interrupt with Ctrl-C or SIGTERM, then select the same project and request
-`Resume research run <ID>`. Resume retains completed results and successful search
-cache, retries failed/interrupted tasks and continues pending tasks. It uses the
-run's original model with current endpoint, credentials and API mode. A new batch
-creates a new run and fresh cache. Use one executor per run; there is no
-cross-process execution lease. Opening the analysis store applies migrations;
-the existing confirmed database reset also removes research runs, tasks and cache.
-
-Network, timeout, rate-limit and server search failures get one retry, respecting
-Retry-After up to 60 seconds or waiting two seconds otherwise. Successful empty
-responses and individual engine failures are retained without retry. Search or
-model authentication/configuration failures, recognized model quota exhaustion,
-and repeated model outages interrupt the batch. Malformed model output gets one
-retry before the task fails; other task failures can finish alongside successful
-results and be retried by resuming.
-
-For an exact GitLab note, use its numeric ID: “Use web search to find a solution
-for note ID 444221 based on its analyzed category.” The agent uses
-`get_analyzed_comment`, which distinguishes a missing note from one awaiting
-analysis. Lists also support `noteIds`; SQLite applies filters before pagination.
-Research tools return the stored solution plus category description and
-recommended solution from the database. The CLI prints database lookup arguments,
-returned counts and exact-lookup status, without printing comment/code payloads.
-
-Search is enabled for explicit research requests and clear research follow-ups,
-such as “Can you find an ESLint plugin for this?” Explicit search prohibitions
-override that permission. The agent is instructed
-to derive generic technical queries, omitting raw comments, source code, and
-internal identifiers. This privacy behavior depends on model instructions;
-queries reach upstream search engines. Results are titles, snippets, and links,
-not full pages, so evidence may be limited and engines may fail or rate-limit.
-Citations must match a task's successful search results, including reused results.
-This checks provenance; recommendations remain candidates, without full-page
-verification or executed code checks. Missing versions and context are recorded
-instead of inferred.
-The [search API documentation](https://docs.searxng.org/dev/search_api.html)
-describes the JSON interface.
-
-SearXNG needs no OpenAI credentials. The existing agent uses `OPENAI_API_KEY`,
-`OPENAI_BASE_URL`, `OPENAI_MODEL`, and `OPENAI_API_MODE` from `.env` to reason
-about results. Only the SearXNG secret is passed into the search container.
-
 ## Tests and evals
 
 ```bash
@@ -305,16 +190,15 @@ call a real GitLab instance or require a GitLab token.
 
 ## Langfuse tracing
 
-Run `npm run infra:up` to start Langfuse and its backing services together with
-SearXNG. Missing `.langfuse.env` credentials are generated automatically. For
-manual configuration, copy `.langfuse.env.example` and replace every placeholder
-with a strong secret. `DATABASE_URL` must use the same password as
+To run Langfuse locally, copy the service configuration and replace every
+placeholder with a strong secret. `DATABASE_URL` must use the same password as
 `POSTGRES_PASSWORD`; both Langfuse S3 secret settings must use
 `MINIO_ROOT_PASSWORD`. `ENCRYPTION_KEY` must be exactly 64 hexadecimal
 characters (generate it with `openssl rand -hex 32`).
 
 ```bash
-npm run infra:up
+cp .langfuse.env.example .langfuse.env
+npm run langfuse:up
 ```
 
 Open <http://localhost:4000>, create a user, organization, and project, then
@@ -333,10 +217,9 @@ before the next prompt, and tracing shuts down when the session ends.
 Omit both API keys to disable CLI tracing. Traces contain request input and
 agent output, including any returned GitLab data.
 
-Use `npm run langfuse:logs` to follow startup and `npm run infra:down` to
-stop the complete stack. `npm run langfuse:up` aliases the full startup script;
-`npm run langfuse:down` stops only Langfuse and its backing services. The named
-Docker volumes retain Langfuse data after a normal shutdown.
+Use `npm run langfuse:logs` to follow startup and `npm run langfuse:down` to
+stop the local services. The named Docker volumes retain Langfuse data after a
+normal shutdown.
 
 Send the golden eval's traces and deterministic scores to Langfuse:
 

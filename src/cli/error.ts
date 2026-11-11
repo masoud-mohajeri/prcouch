@@ -42,25 +42,6 @@ function formatServiceError(error: ServiceError): string {
     ? ` Retry after ${error.retryAfter}.`
     : "";
 
-  if (error.service === "searxng") {
-    switch (error.kind) {
-      case "configuration":
-        return `[error] SearXNG configuration issue: ${error.message} Update .env and try again.`;
-      case "network":
-        return "[error] Cannot reach SearXNG. Run npm run searxng:up and check SEARXNG_BASE_URL.";
-      case "timeout":
-        return "[error] SearXNG did not respond in time. Check the service and network, then retry.";
-      case "authentication":
-        return `[error] SearXNG access denied${status}. Check search.formats includes json and any proxy access restrictions.`;
-      case "incompatible-response":
-        return "[error] SearXNG returned invalid results. Check SEARXNG_BASE_URL points to SearXNG with JSON search enabled.";
-      case "rate-limit":
-        return `[error] SearXNG rate limit reached${status}. Wait and retry.${retryAfter}`;
-      default:
-        return `[error] SearXNG request failed${status}. Check npm run searxng:logs and retry.`;
-    }
-  }
-
   if (error.service === "gitlab") {
     switch (error.kind) {
       case "configuration":

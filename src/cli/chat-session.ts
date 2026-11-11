@@ -10,15 +10,13 @@ import {
 import type { ModelMessage } from "ai";
 import { setActiveTraceIO, startActiveObservation } from "@langfuse/tracing";
 
-import { runGitLabAgent, isWebResearchRequest } from "../agent/agent.js";
-import { getResearchBatchRequest } from "../research/requests.js";
+import { runGitLabAgent } from "../agent/agent.js";
 import {
   GitLabClient,
   requireGitLabConnectionConfig,
 } from "../gitlab/client.js";
 import { formatCliError } from "./error.js";
 import { createCategorizationProgressReporter } from "./categorization-progress.js";
-import { createResearchProgressReporter } from "./research-progress.js";
 import { writeCliLog } from "./logging.js";
 import { createToolActivityReporter } from "./tool-activity.js";
 import { flushCliTracing } from "./tracing.js";
@@ -53,7 +51,7 @@ export async function runChatSession({
   let input = initialInput || (await getInput());
 
   while (input) {
-    if (!(await runTurn(input, chatHistory, terminalUi, gitLabClient))) break;
+    await runTurn(input, chatHistory, terminalUi, gitLabClient);
 
     // A piped command remains a single request. Interactive sessions stay open
     // until the user cancels the prompt, retaining only this process's history.
@@ -68,32 +66,9 @@ async function runTurn(
   chatHistory: ModelMessage[],
   terminalUi: boolean,
   gitLabClient: GitLabClient,
-): Promise<boolean> {
+): Promise<void> {
   const activity = terminalUi ? spinner() : undefined;
-  const reportActivity = activity
-    ? createToolActivityReporter(activity)
-    : undefined;
-  const lookupDiagnostics: string[] = [];
-  const controller = new AbortController();
-  const interruptResearch = () => {
-    process.exitCode = 130;
-    controller.abort();
-  };
-  const terminateResearch = () => {
-    process.exitCode = 143;
-    controller.abort();
-  };
-  let handlesResearchSignals = false;
-  let researchRunId: string | undefined;
-  const reportResearch = createResearchProgressReporter(activity);
   try {
-    handlesResearchSignals = Boolean(
-      getResearchBatchRequest(input, isWebResearchRequest(input, chatHistory)),
-    );
-    if (handlesResearchSignals) {
-      process.on("SIGINT", interruptResearch);
-      process.on("SIGTERM", terminateResearch);
-    }
     activity?.start("Working on your request");
     const result = await startActiveObservation(
       "gitlab-agent-turn",
@@ -102,27 +77,12 @@ async function runTurn(
         const output = await runGitLabAgent(input, {
           gitLabClient,
           chatHistory,
-          onToolExecution: (event) => {
-            reportActivity?.(event);
-            if (event.type === "started" && event.input)
-              lookupDiagnostics.push(
-                `${event.toolName} ${JSON.stringify(event.input)}`,
-              );
-            if (event.type === "finished" && event.summary) {
-              const { returned, total, status } = event.summary;
-              lookupDiagnostics.push(
-                `${event.toolName}: returned ${returned}${total === undefined ? "" : ` of ${total} matching analyses`}${status ? ` (${status})` : ""}`,
-              );
-            }
-          },
+          onToolExecution: activity
+            ? createToolActivityReporter(activity)
+            : undefined,
           onCategorizationProgress: activity
             ? createCategorizationProgressReporter(activity)
             : undefined,
-          signal: controller.signal,
-          onResearchProgress: (event) => {
-            researchRunId = event.runId;
-            reportResearch(event);
-          },
         });
         observation.update({ output });
         setActiveTraceIO({ input, output });
@@ -138,18 +98,8 @@ async function runTurn(
   } catch (error) {
     activity?.stop("Request failed", 1);
     showError(formatCliError(error), terminalUi);
-    if (researchRunId)
-      console.log(
-        `Research run ${researchRunId}. Resume with: Resume research run ${researchRunId}`,
-      );
-    if (!terminalUi && !controller.signal.aborted) process.exitCode = 1;
+    if (!terminalUi) process.exitCode = 1;
   } finally {
-    if (handlesResearchSignals) {
-      process.off("SIGINT", interruptResearch);
-      process.off("SIGTERM", terminateResearch);
-    }
-    if (lookupDiagnostics.length)
-      console.log(`\nDatabase lookups:\n${lookupDiagnostics.join("\n")}`);
     try {
       await flushCliTracing();
     } catch (error) {
@@ -160,7 +110,6 @@ async function runTurn(
       );
     }
   }
-  return !controller.signal.aborted;
 }
 
 async function selectGitLabProject(

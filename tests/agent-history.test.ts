@@ -20,32 +20,6 @@ import { runGitLabAgent } from "../src/agent/agent.js";
 import { GitLabClient } from "../src/gitlab/client.js";
 
 describe("runGitLabAgent chat history", () => {
-  it("keeps explicit research in the agent loop and disables search on ordinary turns", async () => {
-    mocks.generateText.mockResolvedValue({
-      text: "Research result",
-      steps: [],
-    });
-    const fetchImpl = vi.fn<typeof fetch>();
-    const client = new GitLabClient(
-      { baseUrl: "https://gitlab.example.test", token: "test", project: "7" },
-      fetchImpl,
-    );
-    await runGitLabAgent("Research MR !42 using web search", {
-      gitLabClient: client,
-    });
-    const options = mocks.generateText.mock.calls[0]?.[0];
-    expect(options.activeTools).toContain("search_web");
-    expect(options.prepareStep({ stepNumber: 0 })).toEqual({
-      toolChoice: { type: "tool", toolName: "list_analyzed_comments" },
-    });
-    expect(fetchImpl).not.toHaveBeenCalled();
-    await runGitLabAgent("What is the configured project name?", {
-      gitLabClient: client,
-    });
-    expect(mocks.generateText.mock.calls[1]?.[0].activeTools).not.toContain(
-      "search_web",
-    );
-  });
   beforeEach(() => {
     process.env.OPENAI_API_KEY = "test-key";
     mocks.generateText.mockReset();
