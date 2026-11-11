@@ -653,6 +653,8 @@ function formatCategorizationResult({
   recoveredBatches,
   lastError,
   categoryCounts,
+  checklistPaths,
+  checklistError,
 }: {
   processed: number;
   remaining: number;
@@ -660,9 +662,16 @@ function formatCategorizationResult({
   recoveredBatches: number;
   lastError?: string;
   categoryCounts: Record<string, number>;
+  checklistPaths?: string[];
+  checklistError?: string;
 }): string {
+  const checklist = checklistError
+    ? ` Checklist export failed: ${checklistError}. Categorization remains saved; retry categorization to rebuild the checklist.`
+    : checklistPaths?.length
+      ? ` Review checklist: ${checklistPaths.join(", ")}.`
+      : "";
   if (!processed && !remaining)
-    return "No pending comments are available to categorize.";
+    return `No pending comments are available to categorize.${checklist}`;
   const categories = Object.entries(categoryCounts)
     .map(([category, count]) => `${category}: ${count}`)
     .join(", ");
@@ -672,5 +681,5 @@ function formatCategorizationResult({
   const failures = failed
     ? ` ${failed} comment${failed === 1 ? " remains" : "s remain"} pending after a failed batch${lastError ? `: ${lastError}` : ""}.`
     : "";
-  return `Categorized ${processed} pending comment${processed === 1 ? "" : "s"}.${categories ? ` Categories: ${categories}.` : ""} Remaining pending: ${remaining}.${recovered}${failures}`;
+  return `Categorized ${processed} pending comment${processed === 1 ? "" : "s"}.${categories ? ` Categories: ${categories}.` : ""} Remaining pending: ${remaining}.${recovered}${failures}${checklist}`;
 }

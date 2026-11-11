@@ -144,6 +144,7 @@ export const commentAnalytics = sqliteTable(
       .references(() => issueCategories.id),
     resolution: text("resolution").notNull(),
     solution: text("solution"),
+    reviewInstruction: text("review_instruction"),
     rationale: text("rationale"),
     confidence: integer("confidence"),
     batchId: integer("batch_id").references(() => analysisBatches.id),

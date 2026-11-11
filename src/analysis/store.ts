@@ -45,6 +45,7 @@ export type StoredCommentCategory = {
 export type CategoryAssignment = {
   commentId: number;
   categoryId: string;
+  reviewInstruction?: string | null;
 };
 
 export const resolutionSchema = z.enum([
@@ -129,6 +130,7 @@ export const fetchedCommentInputSchema = analyzedCommentInputSchema
 export type FetchedCommentInput = z.input<typeof fetchedCommentInputSchema>;
 
 export const analyzedCommentRecordSchema = analyzedCommentInputSchema.extend({
+  reviewInstruction: z.string().nullable().optional(),
   id: z.string().min(1),
   analyzedAt: z.string().datetime({ offset: true }),
   savedComment: savedCommentSchema.optional(),
@@ -202,6 +204,7 @@ export class AnalysisStore {
         category: issueCategories.code,
         resolution: commentAnalytics.resolution,
         rationale: commentAnalytics.rationale,
+        reviewInstruction: commentAnalytics.reviewInstruction,
         analyzedBy: commentAnalytics.analyzedBy,
         model: commentAnalytics.model,
         analyzedAt: comments.analyzedAt,
@@ -250,6 +253,9 @@ export class AnalysisStore {
         category: row.category,
         resolution: row.resolution,
         rationale: row.rationale ?? undefined,
+        ...(row.reviewInstruction != null
+          ? { reviewInstruction: row.reviewInstruction }
+          : {}),
         analyzedBy: row.analyzedBy ?? undefined,
         model: row.model ?? undefined,
         analyzedAt: row.analyzedAt,
@@ -363,6 +369,21 @@ export class AnalysisStore {
         ...category,
         defaultResolution: resolutionSchema.parse(category.defaultResolution),
       }));
+  }
+
+  /** All saved checklist items, kept separate by GitLab project. */
+  async listReviewInstructions() {
+    return this.db
+      .select({
+        projectId: projects.id,
+        projectName: projects.pathWithNamespace,
+        instruction: commentAnalytics.reviewInstruction,
+      })
+      .from(projects)
+      .innerJoin(comments, eq(comments.projectId, projects.id))
+      .innerJoin(commentAnalytics, eq(commentAnalytics.commentId, comments.id))
+      .orderBy(asc(projects.id), asc(comments.id))
+      .all();
   }
 
   async listPendingComments(limit = 10): Promise<PendingComment[]> {
@@ -689,6 +710,7 @@ export class AnalysisStore {
             categoryId: category.id,
             resolution: category.defaultResolution,
             solution: category.recommendedSolution,
+            reviewInstruction: assignment.reviewInstruction ?? null,
             batchId,
             analyzedBy: "batch-categorizer",
             model,

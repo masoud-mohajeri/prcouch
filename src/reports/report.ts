@@ -264,6 +264,11 @@ function renderReport(
     .resolution { padding: 4px 9px; border-radius: 6px; background: rgba(79, 107, 237, .1); }
     .content-label { margin: 0 0 8px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
     .comment-body { margin: 0 0 22px; padding: 16px 18px; border-inline-start: 3px solid #4f6bed; border-radius: 6px; background: rgba(79, 107, 237, .05); font-size: 16px; line-height: 1.85; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
+    .comment-review { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 24px; align-items: start; }
+    .review-instruction { margin: 0 0 22px; padding: 16px 18px; border-inline-start: 3px solid #4f6bed; background: rgba(79, 107, 237, .05); line-height: 1.7; overflow-wrap: anywhere; }
+    .instruction-list { margin: 0; padding-inline-start: 24px; }
+    .instruction-list li { padding: 8px 0; line-height: 1.7; overflow-wrap: anywhere; }
+    .instruction-list a { margin-inline-start: 12px; font-size: 13px; }
     .comment-code { max-width: 100%; margin: 0; padding: 18px; border: 1px solid #dce2ee; border-radius: 8px; background: #f5f7fb; color: #172033; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; line-height: 1.7; tab-size: 4; white-space: pre; overflow-x: auto; text-align: left; }
     .comment-code code { display: block; width: max-content; min-width: 100%; font: inherit; unicode-bidi: isolate; }
     .diff-line { display: inline-block; min-width: 100%; }
@@ -273,7 +278,7 @@ function renderReport(
     .comment-action { margin-top: 22px; padding-top: 18px; border-top: 1px solid #dce2ee; }
     .comment-action p { margin: 0; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; text-align: start; unicode-bidi: plaintext; }
     .empty { padding: 28px 0; text-align: center; color: #586174; }
-    @media (max-width: 640px) { body { padding: 16px 16px 90px; } .header { flex-direction: column; gap: 8px; } .category-group, .category-nav { padding: 16px; } .comment-card { padding: 16px; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { body { padding: 16px 16px 90px; } .header { flex-direction: column; gap: 8px; } .category-group, .category-nav { padding: 16px; } .comment-card { padding: 16px; } .comment-review { grid-template-columns: minmax(0, 1fr); gap: 0; } .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     @media (prefers-color-scheme: dark) { :root, body { background: #101624; color: #e6ebf5; } .card, .category-group, .category-nav, .comment-card { background: #182033; color: #e6ebf5; border-color: #2e3a52; } .category-links a, .comment-code, .comment-action { border-color: #2e3a52; } .comment-code { background: #101624; color: #e6ebf5; } .muted { color: #aeb8ca; } a { color: #9bb0ff; } .comment-body, .resolution, .category-links .category-count { background: rgba(155, 176, 255, .08); } }
     @media (prefers-color-scheme: dark) { .diff-added { background: #173b27; color: #b7f5c8; } .diff-removed { background: #46252b; color: #ffc1c9; } .diff-hunk { background: #1e2d48; color: #9bb0ff; } }
   </style>
@@ -289,6 +294,7 @@ function renderReport(
     ${metricCard("Unresolved", unresolvedRecords.length)}
     ${metricCard("Affected merge requests", new Set(records.map((record) => record.mergeRequest.webUrl)).size)}
   </section>
+  ${reviewInstructionsSection(records)}
   ${
     records.length === 0
       ? '<p class="empty">No matching analyzed comments.</p>'
@@ -345,15 +351,23 @@ function categoryCommentGroups(
           const code =
             record.savedComment?.codeThatComentIsOn ||
             "No code context available";
-          return `<article class="comment-card">
+          return `<article class="comment-card" id="comment-${escapeAttribute(record.id)}">
   <div class="comment-meta muted">
     <span class="resolution">${escapeHtml(record.resolution.replace(/_/g, " "))}</span>
     <bdi dir="ltr">${escapeHtml(formatLocation(record))}</bdi>
     <time datetime="${escapeAttribute(record.comment.createdAt)}">${escapeHtml(formatDate(record.comment.createdAt))}</time>
     ${safeLink(record.comment.sourceUrl, "Open in GitLab")}
   </div>
-  <h3 class="content-label muted">Comment</h3>
-  <div class="comment-body" dir="auto">${escapeHtml(record.comment.body)}</div>
+  <div class="comment-review">
+    <div>
+      <h3 class="content-label muted">Comment</h3>
+      <div class="comment-body" dir="auto">${escapeHtml(record.comment.body)}</div>
+    </div>
+    <div>
+      <h3 class="content-label muted">Review instruction</h3>
+      <p class="review-instruction" dir="auto">${escapeHtml(record.reviewInstruction?.trim() || "No review instruction saved.")}</p>
+    </div>
+  </div>
   <h3 class="content-label muted">Code context</h3>
   <pre class="comment-code" dir="ltr" tabindex="0" aria-label="Code context"><code>${renderCodeContext(code)}</code></pre>
   <div class="comment-action">
@@ -367,6 +381,21 @@ function categoryCommentGroups(
     })
     .join("");
   return `<nav class="category-nav" id="categories" aria-labelledby="categories-heading"><h2 id="categories-heading">Browse categories</h2><ul class="category-links">${links}</ul></nav>${sections}`;
+}
+
+/** Shows instructions for exactly the comments included by the report filters. */
+function reviewInstructionsSection(records: AnalyzedCommentRecord[]): string {
+  const items = records
+    .filter((record) => record.reviewInstruction?.trim())
+    .map(
+      (record) =>
+        `<li><span dir="auto">${escapeHtml(record.reviewInstruction!.trim())}</span><a href="#comment-${escapeAttribute(record.id)}">View comment · ${escapeHtml(record.project.pathWithNamespace)} · ${escapeHtml(formatLocation(record))}</a></li>`,
+    )
+    .join("");
+  return `<section class="category-group" id="review-instructions" aria-labelledby="review-instructions-heading">
+    <h2 id="review-instructions-heading">All review instructions</h2>
+    ${items ? `<ul class="instruction-list">${items}</ul>` : '<p class="muted">No review instructions saved for the included comments.</p>'}
+  </section>`;
 }
 
 function renderCodeContext(code: string): string {

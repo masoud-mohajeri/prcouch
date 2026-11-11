@@ -1,245 +1,156 @@
-# GitLab review analysis agent
+# GitLab review assistant
 
-A Node.js and TypeScript agent for exploring GitLab merge-request feedback,
-categorizing review comments, saving local analyses, and producing offline HTML
-reports. The [AI SDK](https://ai-sdk.dev/) agent loop lives in
-[`src/agent/agent.ts`](src/agent/agent.ts).
+Turn GitLab review comments into useful feedback for future code reviews.
 
-`master` contains the categorization MVP. Web search and comment research are
-under development on `feature/search-research`; progress is tracked in that
-branch's `docs/in-progress.md`. See [the MVP demo guide](docs/mvp.md) for a
-presentation flow using a separate database.
+The assistant saves comments, groups them by issue type, and creates short review
+instructions from actionable feedback. You can browse the results in an HTML
+report or give the generated checklist to an agent reviewing your code.
 
-## Project layout
+## Get started
 
-```text
-src/
-  cli/       Command-line entry point and terminal error formatting
-  agent/     AI orchestration, provider configuration, and separated tool sets
-  gitlab/    GitLab API client and review-comment normalization
-  analysis/  Saved-analysis storage, validation, and category policy
-  reports/   Offline HTML report generation
-```
+You need:
 
-## Requirements
+- Node.js 22.12 or later.
+- An OpenAI API key.
+- A GitLab token with read-only access to the projects you want to review
+  (`read_api` or fine-grained **Merge Request: Read** permission).
 
-- Node.js 22.12 or later
-- An OpenAI API key
-- A read-only GitLab token (`read_api` or fine-grained **Merge Request: Read**
-  permission) that can list the project to analyze
+1. Install the dependencies and copy the settings file:
 
-Langfuse credentials are only required when exporting CLI or evaluation traces.
+   ```bash
+   npm install
+   cp .env.example .env
+   ```
 
-## Quick start
+2. Open `.env` and fill in your credentials:
 
-```bash
-cp .env.example .env
-# Edit .env with your OpenAI and GitLab credentials.
-npm install
-npm start -- "List unresolved review comments in recent merge requests"
-```
+   ```dotenv
+   OPENAI_API_KEY=your_openai_api_key
+   GITLAB_URL=https://gitlab.com
+   GITLAB_TOKEN=your_read_only_gitlab_token
+   ```
 
-When run directly in an interactive terminal, `npm start` first prompts for a
-GitLab project, then opens a chat session that prompts for further requests
-after every response and retains a bounded window of recent conversational
-context for follow-up questions. Verbose tool payloads are discarded after a
-turn, so the agent re-fetches GitLab data when a follow-up needs those details.
-History exists only in memory and is discarded when the process exits. You can
-provide a quoted request to run one request after choosing the project.
+   Use your organization's GitLab address if it hosts its own instance.
 
-Project selection requires an interactive terminal; noninteractive/piped runs
-are not supported because the project is no longer read from an environment
-variable.
+3. Start the assistant:
 
-The agent requires these settings at startup:
+   ```bash
+   npm start
+   ```
 
-```dotenv
-OPENAI_API_KEY=...
-GITLAB_URL=https://gitlab.com
-GITLAB_TOKEN=...
-# Optional comma-separated GitLab usernames to exclude from discussion chats.
-GITLAB_INVALID_COMMENT_USERS=jenkinspusher,jenkinspuller
-```
+4. Choose a project, then type your request. You can keep asking follow-up
+   questions in the same session.
 
-At the start of every interactive session, the CLI lists the projects available
-to the token and prompts you to select one. The selected project is bound to
-the agent's GitLab tools for the entire session. `GITLAB_URL` must be set
-explicitly, including when using GitLab.com.
+Run the assistant in an interactive terminal; piped input is not supported.
 
-Set `OPENAI_MODEL` to a model available to your account; it defaults to
-`gpt-5-mini`. Optionally, set `OPENAI_BASE_URL` to use an OpenAI-compatible
-API endpoint; it defaults to `https://api.openai.com/v1`. `OPENAI_API_MODE`
-defaults to `responses` for OpenAI and `chat` for custom endpoints, where
-proxies often support Chat Completions but not the Responses API's multi-turn
-tool-call protocol. Set it explicitly to override that behavior.
+## Everyday use
 
-## What the agent can do
+A typical session has three steps. Enter these requests in the chat:
 
-GitLab access is read-only. The agent can retrieve canonical project metadata,
-recent merge requests, compact human discussion summaries, and normalized
-review comments. Each discussion summary contains its file path, line, and
-message strings, excluding notes from usernames in
-`GITLAB_INVALID_COMMENT_USERS`.
+1. **Collect comments:** “Get review comments from the last 10 merged merge requests.”
+2. **Categorize them:** “Categorize all pending comments.”
+3. **View the results:** “Generate an HTML report for all saved comments.”
 
-Recent merged merge requests are ordered by merge time and retrieved across
-GitLab pagination. On GitLab instances older than 17.2, which do not support
-merge-time ordering, the agent falls back to last-update order and says so in
-the result. Requests for comments on the last _N_ merge requests are executed
-as one bounded retrieval; the result reports the requested/returned MR count,
-GitLab page count, and comment persistence summary.
-Each returned normalized comment includes the complete discussion history (all
-notes and replies, including system events) in chronological order. It
-can filter comments by author, merge request, state, creation date, and resolved
-status. Inline comments include file and line context and, where GitLab returns
-one, the diff commit SHA.
+You can also ask:
 
-When the agent retrieves review comments, it saves newly returned comments as
-pending work in the local SQLite database. Each row also retains a stringified
-`saved_comment_json` payload containing `commentMessageTexts`,
-`codeThatComentIsOn`, `commitMessage`, and `fileNewPaht`. Categorization then
-analyzes those saved comments with the committed category policy at
-[`config/comment-categories.json`](config/comment-categories.json). Batch
-categorization assigns an approved category and its configured default
-resolution and recommended solution. It does not infer a per-comment rationale
-or verify whether the issue has been fixed. Saved analyses use:
+- “What is the selected GitLab project name?”
+- “List unresolved review comments by Ava.”
+- “Generate an HTML report for saved security comments.”
 
-```text
-data/analytics.sqlite
-```
+Newly collected comments are saved for categorization. Previously saved comments
+are kept, so you can build up review history over multiple sessions. The chat
+conversation itself is forgotten when you close the assistant.
 
-The database is gitignored because it can contain review content and author data.
-Set `ANALYSIS_STORE_PATH` to use a different location, and keep that location
-access-controlled. The agent never writes to GitLab or to a model-selected
-filesystem path.
+Categorization groups comments by issue type, such as bugs, security, or testing.
+It does not check whether the code has since been fixed.
 
-Use `npm run db:studio` to inspect the local database with Drizzle Studio. It
-is a local development tool and can edit data, so do not expose it remotely.
+## Review checklists
 
-### Add issue categories directly to SQLite
+During categorization, each actionable comment gets a short instruction for a
+future reviewer. For example:
 
-`issue_categories` requires metadata beyond the category code and description.
-Use an upsert so rerunning the command safely updates an existing category:
+> Check nullable API fields before accessing nested properties.
 
-```bash
-sqlite3 data/analytics.sqlite "
-INSERT INTO issue_categories (
-  code, name, description, recommended_solution, default_resolution,
-  active, version, created_at, updated_at
-) VALUES (
-  'type_safety',
-  'Type safety',
-  'Problems caused by weak, incorrect, missing, or overly broad TypeScript types.',
-  'Use strict TypeScript settings and type-aware linting in CI.',
-  'open', 1, 1, datetime('now'), datetime('now')
-)
-ON CONFLICT(code) DO UPDATE SET
-  name = excluded.name,
-  description = excluded.description,
-  recommended_solution = excluded.recommended_solution,
-  default_resolution = excluded.default_resolution,
-  active = excluded.active,
-  version = excluded.version,
-  updated_at = excluded.updated_at;
-"
-```
+Praise, unresolved questions, and comments without a clear actionable issue do not
+get an instruction. Previously categorized comments are not processed again, so
+older comments may have no instruction.
 
-Replace the values with the desired category. If `ANALYSIS_STORE_PATH` is set,
-use that SQLite file instead. The next category-policy sync deactivates database
-categories absent from `config/comment-categories.json`; add the category there
-too when it must remain available for future classifications.
+Each project gets a checklist in `reports/review-checklist-<project-id>.md`.
+Repeated instructions appear once. The file is rebuilt from saved instructions
+after each categorization run, so edits to the generated file will be overwritten.
+If writing the file fails, the saved analysis is kept; ask to categorize again to
+retry creating the checklist.
 
-## Examples
+To use it in future reviews:
+
+1. Copy the checklist into the repository being reviewed, for example as
+   `docs/review-checklist.md`.
+2. Add this line to that repository's `AGENTS.md`:
+
+   ```text
+   During code review, read and apply docs/review-checklist.md.
+   ```
+
+## HTML reports
+
+Ask for a report, then open the generated `.html` file in your browser. Reports
+are saved in `reports/` and work offline.
+
+Each report includes:
+
+- An overview of issue categories and comment counts.
+- Comments grouped by category, with their file location, available code context,
+  recommended solution, and a link to GitLab.
+- Each saved review instruction beside its corresponding comment.
+- An **All review instructions** section, with links back to the comments.
+
+On smaller screens, instructions appear below the comment. Comments without an
+instruction show “No review instruction saved.” If you filter a report, its
+instructions section includes only the matching comments.
+
+Generate a new report to see newly saved instructions; existing HTML files do not
+update automatically.
+
+## Settings and saved data
+
+The assistant reads GitLab data without changing merge requests or posting
+comments. Review comments are sent to your configured AI provider for analysis.
+Saved data stays in `data/analytics.sqlite`; reports and checklists stay in
+`reports/`. These folders are excluded from Git because they can contain private
+review content.
+
+Most users only need the three credentials above. Optional settings in `.env`:
+
+| Setting                        | What it changes                                                               |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `OPENAI_MODEL`                 | AI model; defaults to `gpt-5-mini`.                                           |
+| `OPENAI_BASE_URL`              | Address of an alternative, OpenAI-compatible AI service.                      |
+| `OPENAI_API_MODE`              | API connection mode: `responses` or `chat`. Normally chosen automatically.    |
+| `GITLAB_INVALID_COMMENT_USERS` | Comma-separated usernames to leave out of discussion summaries, such as bots. |
+| `ANALYSIS_STORE_PATH`          | Location of the saved review database.                                        |
+| `REPORT_OUTPUT_DIR`            | Folder for HTML reports and Markdown checklists.                              |
+| `COMMENT_CATEGORY_CONFIG_PATH` | Location of a custom category configuration.                                  |
+
+To change the available categories, edit
+[`config/comment-categories.json`](config/comment-categories.json).
+See [`.env.example`](.env.example) for all settings.
+
+## For contributors
 
 ```bash
-npm start -- "What is the selected GitLab project name?"
-npm start -- "List unresolved review comments by Ava, including file, line, and commit SHA."
-npm start -- "Categorize all pending comments."
-npm start -- "Generate an HTML report for saved security comments."
-```
-
-## Reports
-
-Ask the agent to generate a self-contained HTML dashboard from saved analyses.
-
-By default, reports are timestamped files in `reports/`. Set
-`REPORT_OUTPUT_DIR` to change the directory. A report shows what percentage of
-the included comments belongs to each issue category. Select a category to see
-its corresponding comments, along with their stored resolution, location,
-available code context, category-level recommended solution, and GitLab source
-link. Author data is omitted.
-Report files are gitignored because they can contain local review data.
-
-## Configuration
-
-Copy `.env.example` to see every option. In addition to the required agent
-credentials, these settings are available:
-
-| Setting                        | Purpose                                                                                     |
-| ------------------------------ | ------------------------------------------------------------------------------------------- |
-| `OPENAI_MODEL`                 | Overrides the default `gpt-5-mini` model.                                                   |
-| `OPENAI_BASE_URL`              | Optional OpenAI-compatible API endpoint; defaults to `https://api.openai.com/v1`.           |
-| `OPENAI_API_MODE`              | `responses` or `chat`; defaults to `responses` for OpenAI and `chat` for a custom base URL. |
-| `ANALYSIS_STORE_PATH`          | Changes the local SQLite database path.                                                     |
-| `COMMENT_CATEGORY_CONFIG_PATH` | Replaces the validated category/action policy.                                              |
-| `REPORT_OUTPUT_DIR`            | Changes where HTML reports are written.                                                     |
-| `LANGFUSE_*`                   | Configures Langfuse CLI and evaluation tracing.                                             |
-
-## Tests and evals
-
-```bash
-npm test       # deterministic tests; no API key or network calls
+npm test
 npm run typecheck
-npm run evals  # live model evals; requires OPENAI_API_KEY
+npm run format:check
 ```
 
-The test suite includes a full fixture-backed review-analysis flow and report
-generation. The GitLab golden eval injects fixture responses, so it does not
-call a real GitLab instance or require a GitLab token.
+Tests use local examples without API credentials. `npm run evals` checks behavior
+using a live AI model and requires an OpenAI API key.
 
-## Langfuse tracing
+For a guided walkthrough, see the [demo guide](docs/mvp.md). For storage details,
+see [the storage guide](docs/analytics-storage-strategy.md).
 
-To run Langfuse locally, copy the service configuration and replace every
-placeholder with a strong secret. `DATABASE_URL` must use the same password as
-`POSTGRES_PASSWORD`; both Langfuse S3 secret settings must use
-`MINIO_ROOT_PASSWORD`. `ENCRYPTION_KEY` must be exactly 64 hexadecimal
-characters (generate it with `openssl rand -hex 32`).
-
-```bash
-cp .langfuse.env.example .langfuse.env
-npm run langfuse:up
-```
-
-Open <http://localhost:4000>, create a user, organization, and project, then
-create a project API key pair in **Settings → API Keys**. Add that pair to the
-agent's `.env` along with the local Langfuse URL:
-
-```dotenv
-LANGFUSE_BASE_URL=http://localhost:4000
-LANGFUSE_PUBLIC_KEY=...
-LANGFUSE_SECRET_KEY=...
-```
-
-With these credentials configured, `npm start` exports each agent turn,
-including direct GitLab retrieval, to Langfuse. Completed turns are flushed
-before the next prompt, and tracing shuts down when the session ends.
-Omit both API keys to disable CLI tracing. Traces contain request input and
-agent output, including any returned GitLab data.
-
-Use `npm run langfuse:logs` to follow startup and `npm run langfuse:down` to
-stop the local services. The named Docker volumes retain Langfuse data after a
-normal shutdown.
-
-Send the golden eval's traces and deterministic scores to Langfuse:
-
-```bash
-npm run evals:langfuse
-```
-
-The eval uses the committed local dataset, so no dataset bootstrap is needed.
-Results and task traces are available in Langfuse's Experiments view.
-
-## Production notes
-
-Enforce authenticated user and tenant authorization in every tool. Keep write
-operations narrow, validate all arguments, require confirmation for
-irreversible actions, and redact sensitive data from logs.
+Optional Langfuse tracing records requests and responses, including returned
+GitLab data. Set `LANGFUSE_PUBLIC_KEY`, `LANGFUSE_SECRET_KEY`, and
+`LANGFUSE_BASE_URL` in `.env` to enable it; leave both keys unset to disable it.
+For a local instance, configure `.langfuse.env` from `.langfuse.env.example` and
+run `npm run langfuse:up`. Stop it with `npm run langfuse:down`.
