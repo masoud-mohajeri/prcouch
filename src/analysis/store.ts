@@ -64,7 +64,6 @@ const locationSchema = z.object({
   newLine: z.number().int().positive().nullable().default(null),
 });
 
-/** The data required to persist one AI/human analysis of a GitLab note. */
 export const analyzedCommentInputSchema = z.object({
   project: z.object({
     id: z.number().int().positive(),
@@ -108,7 +107,6 @@ export type FetchedCommentSaveResult = {
   existing: number;
 };
 
-/** The complete format retained for a fetched review comment. */
 export const savedCommentSchema = z.object({
   commentMessageTexts: z.array(z.string()),
   codeThatComentIsOn: z.string(),
@@ -163,7 +161,6 @@ export function getAnalysisStorePath(env = process.env): string {
   return resolve(configuredPath || "data/analytics.sqlite");
 }
 
-/** SQLite-backed persistence for local review analyses. */
 export class AnalysisStore {
   readonly path: string;
   private readonly sqlite: Database.Database;

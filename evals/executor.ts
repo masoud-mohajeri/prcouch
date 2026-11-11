@@ -6,11 +6,6 @@ export type EvalOutput = Pick<AgentResult, "text" | "toolCalls"> & {
   gitLabRequests: string[];
 };
 
-/**
- * A pure(ish) executor: it accepts one dataset row's data and returns structured
- * output. Langfuse passes this function to its experiment runner as a thin
- * adapter around each dataset item.
- */
 export async function executeEvalCase(input: EvalInput): Promise<EvalOutput> {
   const { client, requests } = createGitLabFixture(input.gitLabFixture);
   const result = await runGitLabAgent(input.query, { gitLabClient: client });

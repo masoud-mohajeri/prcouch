@@ -3,7 +3,6 @@ import type { Evaluator } from "@langfuse/client";
 import type { EvalInput, EvalTarget } from "./cases.js";
 import type { EvalOutput } from "./executor.js";
 
-/** Named, deterministic scorers shared by the local runner and Langfuse. */
 export const evaluators = {
   toolSequence: (output: EvalOutput, target?: EvalTarget) =>
     Number(Boolean(target && sameArray(output.toolCalls, target.toolSequence))),

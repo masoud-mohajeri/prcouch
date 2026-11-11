@@ -73,7 +73,6 @@ export function getReportDirectory(env = process.env): string {
   return resolve(configuredDirectory || "reports");
 }
 
-/** Generates a local, self-contained and offline-safe HTML analysis report. */
 export class CommentReportGenerator {
   readonly outputDirectory: string;
 
@@ -383,7 +382,6 @@ function categoryCommentGroups(
   return `<nav class="category-nav" id="categories" aria-labelledby="categories-heading"><h2 id="categories-heading">Browse categories</h2><ul class="category-links">${links}</ul></nav>${sections}`;
 }
 
-/** Shows instructions for exactly the comments included by the report filters. */
 function reviewInstructionsSection(records: AnalyzedCommentRecord[]): string {
   const items = records
     .filter((record) => record.reviewInstruction?.trim())

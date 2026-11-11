@@ -8,7 +8,6 @@ export type GitLabConfig = {
   invalidCommentUsers?: readonly string[];
 };
 
-/** Connection settings shared by project discovery and project-scoped calls. */
 export type GitLabConnectionConfig = Omit<GitLabConfig, "project">;
 
 type Fetch = typeof fetch;
@@ -48,7 +47,6 @@ export type MergeRequest = {
   author: { name: string; username: string } | null;
 };
 
-/** Canonical metadata returned by GitLab for the configured project. */
 export type Project = {
   id: number;
   name: string;
@@ -56,7 +54,6 @@ export type Project = {
   web_url: string;
 };
 
-/** Raw GitLab discussion data used by the detailed review-comment service. */
 export type DiscussionDetails = {
   id: string;
   individual_note: boolean;
@@ -108,7 +105,6 @@ export type DiffPosition = {
   head_sha?: string;
 };
 
-/** A file diff returned for a merge request. */
 export type MergeRequestChange = {
   old_path: string;
   new_path: string;
@@ -175,7 +171,6 @@ export function requireGitLabConfig(env = process.env): GitLabConfig {
   return { ...requireGitLabConnectionConfig(env), project };
 }
 
-/** A read-only client for the two GitLab endpoints the agent needs. */
 export class GitLabClient {
   constructor(
     private readonly config: GitLabConfig,
@@ -350,7 +345,6 @@ export class GitLabClient {
     );
   }
 
-  /** Whether this author is configured as an automated/non-review commenter. */
   isInvalidCommentUser(username: string): boolean {
     return isInvalidCommentUser(
       username,
@@ -444,7 +438,6 @@ export class GitLabClient {
     );
   }
 
-  /** Retrieves the diff hunks needed to preserve code context for inline notes. */
   async getMergeRequestChanges(
     mergeRequestIid: number,
   ): Promise<MergeRequestChange[]> {
@@ -462,7 +455,6 @@ export class GitLabClient {
     return response.changes;
   }
 
-  /** Retrieves merge-request commits so an inline note can retain its message. */
   async listMergeRequestCommits(
     mergeRequestIid: number,
   ): Promise<MergeRequestCommit[]> {

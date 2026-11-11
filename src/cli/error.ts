@@ -5,15 +5,6 @@ import {
   type ServiceError,
 } from "../errors.js";
 
-type ApiErrorDetails = {
-  statusCode?: number;
-  message?: string;
-  responseHeaders?: unknown;
-  lastError?: unknown;
-  errors?: unknown;
-  cause?: unknown;
-};
-
 type ProviderError = {
   statusCode: number;
   message: string;

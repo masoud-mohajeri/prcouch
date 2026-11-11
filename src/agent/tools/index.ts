@@ -21,7 +21,6 @@ export type AgentToolOptions = {
   onToolExecution?: ToolExecutionObserver;
 };
 
-/** Combines independent retrieval and analysis tool sets for the agent. */
 export function createAgentTools({
   client = new GitLabClient(requireGitLabConfig()),
   analysisStore = new AnalysisStore(),

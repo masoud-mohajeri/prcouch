@@ -183,7 +183,6 @@ export function getInitialToolForInput(
   return undefined;
 }
 
-/** Matches a natural-language command for SQLite batch analysis. */
 export function isCategorizePendingCommentsRequest(input: string): boolean {
   const query = input.toLowerCase();
   if (/\b(?:show|list|what are|which)\b.*\bcategor/.test(query)) return false;
@@ -217,11 +216,6 @@ function isCategorizationConfirmation(
   );
 }
 
-/**
- * Handles simple MR-list requests without asking a model to count or repeat
- * data that GitLab already returned. Comment requests remain agent-driven
- * because they need additional discussion calls.
- */
 export function getMergeRequestListRequest(
   input: string,
 ): MergeRequestListRequest | undefined {
@@ -274,7 +268,6 @@ export function getRecentMergeRequestCommentRequest(
   };
 }
 
-/** Returns the project-local IID in a user-supplied GitLab reference such as !5896. */
 export function getNamedMergeRequestIid(input: string): number | undefined {
   const match = input.match(/(?:^|\s)!([1-9]\d*)\b/);
   return match ? Number(match[1]) : undefined;
@@ -368,8 +361,6 @@ export async function runGitLabAgent(
 
   const tools = createAgentTools({ client: gitLabClient, onToolExecution });
   const result = await generateText({
-    // Many OpenAI-compatible endpoints implement Chat Completions but not the
-    // Responses API's multi-turn item-reference protocol.
     model,
     system: systemPrompt,
     ...(retainedHistory

@@ -19,7 +19,6 @@ export const analysisToolNames = {
   clearAnalysisData: "clear_analysis_data",
 } as const;
 
-/** Tools for categorizing, storing, and reporting on saved comment analyses. */
 export function createAnalysisTools(
   analysisStore = new AnalysisStore(),
   categoryPolicy = new CommentCategoryPolicy(),
